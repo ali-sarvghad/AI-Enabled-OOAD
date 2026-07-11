@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OOAD Studio — AI-Guided Analysis & Design (Research Prototype)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+<style>
+  :root {
+    --paper: #FAF9F6;
+    --panel: #FFFFFF;
+    --ink: #1C2733;
+    --ink-soft: #5A6774;
+    --line: #DCE1E7;
+    --blueprint: #2456A6;
+    --blueprint-soft: #EAF0FA;
+    --blueprint-deep: #16386E;
+    --ready: #2E7D5B;
+    --ready-soft: #E7F3EE;
+    --warn: #A65524;
+    --warn-soft: #FBF1E9;
+    --mono: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    font-size: 15px;
+  }
+
+  /* ---------- Header & phase rail ---------- */
+  header {
+    padding: 14px 22px 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .masthead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .masthead h1 { font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
+  .masthead h1 span { color: var(--blueprint); }
+  .masthead .tag { font-size: 12px; color: var(--ink-soft); }
+  .masthead .spacer { flex: 1; }
+  .masthead button {
+    font-size: 12px;
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 11px;
+    cursor: pointer;
+    color: var(--ink-soft);
+    font-family: var(--sans);
+  }
+  .masthead button:hover { border-color: var(--blueprint); color: var(--blueprint); }
+  .masthead button.needs-setup { border-color: var(--warn); color: var(--warn); }
+
+  .phase-rail { display: flex; align-items: center; padding: 12px 0 14px; overflow-x: auto; }
+  .phase-node { display: flex; align-items: center; flex-shrink: 0; }
+  .phase-pill {
+    border: 1.5px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    background: var(--panel);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    font-family: var(--sans);
+  }
+  .phase-pill .idx { font-family: var(--mono); font-size: 10.5px; margin-right: 6px; opacity: 0.7; }
+  .phase-node.done .phase-pill { border-color: var(--ready); color: var(--ready); background: var(--ready-soft); }
+  .phase-node.active .phase-pill { border-color: var(--blueprint); background: var(--blueprint); color: #fff; font-weight: 600; }
+  .phase-node.locked .phase-pill { opacity: 0.55; cursor: default; }
+  .phase-arrow { width: 26px; height: 2px; background: var(--line); position: relative; margin: 0 2px; }
+  .phase-arrow::after {
+    content: "";
+    position: absolute; right: -1px; top: -3px;
+    border-left: 6px solid var(--line);
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+  }
+
+  /* ---------- Main layout ---------- */
+  main { flex: 1; display: grid; grid-template-columns: minmax(360px, 46%) 1fr; min-height: 0; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } }
+
+  /* ---------- Chat panel ---------- */
+  .chat-panel { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-height: 0; background: var(--panel); }
+  .brief-banner {
+    margin: 10px 16px 0;
+    background: var(--blueprint-soft);
+    border: 1px solid var(--blueprint);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: var(--blueprint-deep);
+    display: none;
+  }
+  .brief-banner.show { display: block; }
+  .chat-scroll { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 92%; line-height: 1.55; }
+  .msg .who {
+    font-size: 10.5px; font-family: var(--mono);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-soft); margin-bottom: 4px;
+  }
+  .msg.tutor { align-self: flex-start; border-left: 3px solid var(--blueprint); padding: 8px 14px; background: #FCFCFB; border-radius: 0 8px 8px 0; }
+  .msg.student { align-self: flex-end; background: var(--blueprint-soft); padding: 8px 14px; border-radius: 8px 8px 0 8px; }
+  .msg.system-note { align-self: center; font-size: 12.5px; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 8px; padding: 6px 12px; }
+  .msg .diagram-note {
+    display: inline-block; margin-top: 6px;
+    font-size: 12px; font-family: var(--mono);
+    color: var(--blueprint); background: var(--blueprint-soft);
+    padding: 2px 8px; border-radius: 4px;
+  }
+  .msg p + p { margin-top: 8px; }
+  .thinking { align-self: flex-start; color: var(--ink-soft); font-size: 13px; font-style: italic; padding-left: 14px; }
+  .thinking .dots::after { content: "…"; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+  .advance-banner {
+    margin: 0 20px 10px;
+    background: var(--ready-soft);
+    border: 1px solid var(--ready);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    color: var(--ready);
+    display: none; align-items: center; gap: 12px;
+  }
+  .advance-banner.show { display: flex; }
+  .advance-banner button {
+    background: var(--ready); color: #fff; border: none; border-radius: 6px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600; font-family: var(--sans);
+  }
+
+  .composer { border-top: 1px solid var(--line); padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+  .composer textarea {
+    flex: 1; resize: none;
+    border: 1.5px solid var(--line); border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--sans); font-size: 14.5px; line-height: 1.4;
+    max-height: 130px; background: var(--paper);
+  }
+  .composer textarea:focus { outline: none; border-color: var(--blueprint); }
+  .composer button {
+    background: var(--blueprint); color: #fff; border: none; border-radius: 8px;
+    padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans);
+  }
+  .composer button:disabled { opacity: 0.5; cursor: default; }
+  .hint-row { padding: 0 16px 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .hint-chip {
+    font-size: 12px; border: 1px dashed var(--line); border-radius: 999px;
+    padding: 4px 11px; color: var(--ink-soft); cursor: pointer; background: none; font-family: var(--sans);
+  }
+  .hint-chip:hover { border-color: var(--blueprint); color: var(--blueprint); }
+
+  /* ---------- Drafting board ---------- */
+  .board { display: flex; flex-direction: column; min-height: 0; }
+  .board-head { display: flex; align-items: center; padding: 12px 18px; gap: 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .board-head .title { font-weight: 700; font-size: 14px; }
+  .board-head .sub { font-size: 12px; color: var(--ink-soft); }
+  .board-head .spacer { flex: 1; }
+  .view-toggle { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .view-toggle button {
+    border: none; background: none; font-size: 12px; padding: 5px 12px;
+    cursor: pointer; color: var(--ink-soft); font-family: var(--sans);
+  }
+  .view-toggle button.on { background: var(--blueprint); color: #fff; }
+  .board-body {
+    flex: 1; overflow: auto; position: relative;
+    background:
+      linear-gradient(var(--paper) 0 0) padding-box,
+      repeating-linear-gradient(0deg, transparent 0 23px, rgba(36,86,166,0.06) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, rgba(36,86,166,0.06) 23px 24px),
+      var(--paper);
+    padding: 26px;
+  }
+  #diagram-host { min-height: 100%; display: flex; align-items: flex-start; justify-content: center; }
+  #diagram-host svg { max-width: 100%; height: auto; }
+  .board-empty { color: var(--ink-soft); font-size: 14px; text-align: center; max-width: 380px; margin: 60px auto 0; line-height: 1.6; }
+  .board-empty .glyph { font-family: var(--mono); font-size: 30px; color: var(--blueprint); opacity: 0.4; display: block; margin-bottom: 10px; }
+  #source-view {
+    display: none;
+    font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap;
+    background: #10192B; color: #CFE0F5;
+    border-radius: 10px; padding: 18px; line-height: 1.6;
+  }
+  .render-error {
+    background: var(--warn-soft); border: 1px solid var(--warn); color: var(--warn);
+    border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
+  }
+
+  /* ---------- Modals ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(28,39,51,0.45);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--panel); border-radius: 12px;
+    width: min(560px, 92vw); max-height: 86vh; overflow-y: auto;
+    padding: 24px;
+    box-shadow: 0 18px 50px rgba(28,39,51,0.25);
+  }
+  .modal h2 { font-size: 16px; margin-bottom: 4px; }
+  .modal .sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 16px; line-height: 1.5; }
+  .modal label { display: block; font-size: 12px; font-weight: 600; margin: 14px 0 5px; color: var(--ink); }
+  .modal input[type="password"], .modal input[type="text"], .modal select, .modal textarea {
+    width: 100%; border: 1.5px solid var(--line); border-radius: 8px;
+    padding: 9px 11px; font-size: 13.5px; font-family: var(--sans); background: var(--paper);
+  }
+  .modal textarea { font-size: 13px; line-height: 1.5; resize: vertical; }
+  .modal input:focus, .modal select:focus, .modal textarea:focus { outline: none; border-color: var(--blueprint); }
+  .modal .warn-box {
+    background: var(--warn-soft); border: 1px solid var(--warn);
+    border-radius: 8px; padding: 10px 12px;
+    font-size: 12.5px; color: var(--warn); line-height: 1.5; margin-top: 14px;
+  }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  .modal .actions button {
+    border-radius: 8px; padding: 8px 16px; font-size: 13.5px; cursor: pointer; font-family: var(--sans);
+  }
+  .btn-primary { background: var(--blueprint); color: #fff; border: none; font-weight: 600; }
+  .btn-ghost { background: none; border: 1px solid var(--line); color: var(--ink-soft); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="masthead">
+    <h1>OOAD <span>Studio</span></h1>
+    <div class="tag">research prototype — instructor testing build</div>
+    <div class="spacer"></div>
+    <button id="btn-brief">Assignment brief</button>
+    <button id="btn-export">Export session</button>
+    <button id="btn-reset">New project</button>
+    <button id="btn-settings">⚙ Settings</button>
+  </div>
+  <div class="phase-rail" id="phase-rail"></div>
+</header>
+
+<main>
+  <section class="chat-panel">
+    <div class="brief-banner" id="brief-banner"></div>
+    <div class="chat-scroll" id="chat"></div>
+    <div class="advance-banner" id="advance-banner">
+      <span id="advance-text">Your tutor thinks this phase is in good shape.</span>
+      <button id="btn-advance">Continue →</button>
+    </div>
+    <div class="hint-row" id="hints"></div>
+    <div class="composer">
+      <textarea id="input" rows="2" placeholder="Describe your system, answer the tutor, or ask a UML question…"></textarea>
+      <button id="btn-send">Send</button>
+    </div>
+  </section>
+
+  <section class="board">
+    <div class="board-head">
+      <div>
+        <div class="title" id="board-title">Actor Map</div>
+        <div class="sub" id="board-sub">Grows as your conversation surfaces new actors and goals</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="view-toggle">
+        <button id="tab-diagram" class="on">Diagram</button>
+        <button id="tab-source">Source</button>
+      </div>
+    </div>
+    <div class="board-body">
+      <div id="render-error-slot"></div>
+      <div id="diagram-host">
+        <div class="board-empty">
+          <span class="glyph">⟨⟨ boundary ⟩⟩</span>
+          Nothing on the drafting board yet.<br>
+          Tell your tutor about the system you have in mind — the first sketch appears here as soon as there is something worth drawing.
+        </div>
+      </div>
+      <pre id="source-view"></pre>
+    </div>
+  </section>
+</main>
+
+<!-- Settings modal -->
+<div class="modal-backdrop" id="settings-modal">
+  <div class="modal">
+    <h2>Settings</h2>
+    <div class="sub">This prototype calls the Anthropic API directly from your browser. Your key is kept in this browser's local storage only — it is never sent anywhere except to Anthropic.</div>
+    <label for="set-key">Anthropic API key</label>
+    <input type="password" id="set-key" placeholder="sk-ant-…" autocomplete="off">
+    <label for="set-model">Model</label>
+    <select id="set-model">
+      <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
+      <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (cheaper, for quick tests)</option>
+      <option value="claude-opus-4-8">claude-opus-4-8 (strongest, most expensive)</option>
+    </select>
+    <div class="warn-box"><strong>Instructor use only.</strong> Keys in the browser are acceptable for personal testing, but this pattern must never be used in a student-facing deployment — the production platform proxies the API through a backend. Never commit a key to the repository.</div>
+    <div class="actions">
+      <button class="btn-ghost" id="set-cancel">Cancel</button>
+      <button class="btn-primary" id="set-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Assignment brief modal -->
+<div class="modal-backdrop" id="brief-modal">
+  <div class="modal">
+    <h2>Assignment brief</h2>
+    <div class="sub">Paste a coursework scenario (e.g., a past CW1 brief). The tutor will ground its questioning in this brief — still Socratic, but aware of the intended scope. Load it before or during a session; clear it to run brief-free.</div>
+    <label for="brief-title">Short label (appears in exports)</label>
+    <input type="text" id="brief-title" placeholder="e.g., CW1 2023 — Library System">
+    <label for="brief-text">Brief text</label>
+    <textarea id="brief-text" rows="10" placeholder="Paste the assignment scenario here…"></textarea>
+    <div class="actions">
+      <button class="btn-ghost" id="brief-clear">Clear brief</button>
+      <button class="btn-ghost" id="brief-cancel">Cancel</button>
+      <button class="btn-primary" id="brief-save">Use this brief</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   OOAD Studio — research prototype (static / GitHub Pages build)
+   Instructor testing tool. See CLAUDE.md for the product roadmap and
+   README.md for deployment. NOT for student-facing use: this build
+   keeps the API key client-side by design, for one trusted user.
+   ================================================================ */
+
+mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" });
+
+/* ---------------- Phase curriculum ---------------- */
+
+const PHASES = [
+  {
+    id: "actors",
+    label: "Actors & Goals",
+    boardTitle: "Actor Map",
+    boardSub: "Grows as your conversation surfaces new actors and goals",
+    dialect: "graph TB",
+    hints: ["Who else touches this system?", "What's a 'secondary actor'?", "Why does the system boundary matter?"],
+    instructions: `
+PHASE: Actor & goal elicitation.
+Your job: help the student discover WHO interacts with their system and WHY, before any solutioning.
+Elicit progressively: primary actors (who gets value), secondary/supporting actors (admins, support staff), and external systems (payment, email, identity providers) — students almost always forget the last two, so probe for them.
+For each actor, elicit their GOAL in one phrase.
+Introduce naturally, when the conversation touches data or roles: the question of differing privileges ("Should a librarian and a member see the same things?") — this plants access control early.
+Ask about the SYSTEM BOUNDARY: what is inside the system vs. done by people or other systems.
+DIAGRAM: maintain a Mermaid "graph TB" actor map — a subgraph named after the system containing a single node [(System)], actors as nodes like A1["👤 Member"] or E1[["⚙ Payment Gateway"]] OUTSIDE the subgraph, edges labeled with the actor's goal, e.g. A1 -->|"borrow books"| SYS.
+READY: at least 2-3 human actors with goals, at least one external system considered (even if ruled out), boundary discussed.`
+  },
+  {
+    id: "usecases",
+    label: "Use Cases",
+    boardTitle: "Use Case Diagram",
+    boardSub: "Ellipse-style use cases inside the system boundary (Mermaid approximation)",
+    dialect: "graph LR",
+    hints: ["What does «include» mean?", "What's a misuse case?", "How detailed should a use case be?"],
+    instructions: `
+PHASE: Use case modeling.
+Turn the actors' goals into named use cases. Push for VERB-NOUN names ("Borrow Book", not "Book Borrowing").
+For each significant use case, briefly probe: precondition, main success scenario in one sentence, one alternative/failure flow. Do NOT write full use-case text for them — ask, then confirm.
+Introduce when relevant: «include» for shared mandatory behavior (e.g. Authenticate), «extend» for optional behavior; MISUSE cases as a security lens ("What would a bad actor try to do here?").
+DIAGRAM: Mermaid "graph LR". Actors as nodes with 👤 outside a subgraph named after the system; use cases INSIDE the subgraph as stadium nodes UC1(["Borrow Book"]); solid edges actor --- UC; «include»/«extend» as dashed labeled edges UC1 -.->|"«include»"| UC2.
+READY: 4+ use cases covering all actors, at least one include/extend relationship reasoned about, at least one failure flow or misuse case discussed.`
+  },
+  {
+    id: "domain",
+    label: "Class Diagram",
+    boardTitle: "Domain Model — Class Diagram",
+    boardSub: "Entities, attributes, relationships, multiplicities",
+    dialect: "classDiagram",
+    hints: ["Aggregation vs composition?", "What's a multiplicity?", "Is this a god class?"],
+    instructions: `
+PHASE: Domain / class modeling.
+Derive candidate classes from the nouns in the use cases — ask the student to propose them first, then refine together.
+For each class: 2-4 key attributes (no full method lists yet), and the INVARIANTS ("Can a Loan exist without a Member? Can dueDate be in the past at creation?").
+Introduce when relevant: multiplicities on every association and make the student justify them; association vs aggregation vs composition with a concrete test ("If the Library is deleted, do the Books cease to exist?"); watch for god classes and gently ask what could be split.
+DIAGRAM: Mermaid "classDiagram" with classes, key attributes, associations with multiplicities and labels, e.g. Member "1" --> "0..*" Loan : holds. Add composition (*--) or aggregation (o--) only after it is justified in conversation.
+READY: 4-6 classes, all associations have justified multiplicities, at least one invariant per central class discussed.`
+  },
+  {
+    id: "sequence",
+    label: "Sequence",
+    boardTitle: "Sequence Diagram",
+    boardSub: "One key use case, played out across the objects",
+    dialect: "sequenceDiagram",
+    hints: ["Where should validation live?", "What if this call fails?", "What's an activation bar?"],
+    instructions: `
+PHASE: Interaction modeling.
+Have the student pick ONE high-value use case from their model and walk its main success scenario step by step — the student narrates, you transcribe and question.
+Participants must come from the class diagram (plus the actor and any external systems). If they invoke an object that doesn't exist in the domain model, point at the gap.
+Introduce when relevant: WHERE responsibility lives ("Which object checks the member's loan limit — and why that one?"); FAILURE paths ("What happens when the payment gateway times out?") drawn with alt/opt fragments; the difference between sync/async when external systems appear.
+DIAGRAM: Mermaid "sequenceDiagram" with actor X, participants, numbered messages, and alt blocks for the failure path once discussed.
+READY: one full main flow plus at least one alt/failure fragment, with responsibility placement justified.`
+  },
+  {
+    id: "state",
+    label: "States",
+    boardTitle: "State Machine Diagram",
+    boardSub: "The lifecycle of your most eventful entity",
+    dialect: "stateDiagram-v2",
+    hints: ["What's a guard condition?", "Which entity needs a state machine?", "Can this transition happen twice?"],
+    instructions: `
+PHASE: Behavioral / state modeling.
+Ask the student which entity in their domain has the richest LIFECYCLE (Loan, Order, Reservation…) and why — the choice itself is an assessment moment.
+Elicit states as adjectives/participles (Requested, Active, Overdue), transitions with their triggering events, and GUARDS ("returned [after dueDate] → Overdue?").
+Introduce when relevant: illegal transitions ("Can a Cancelled loan become Active again? What stops it?"); terminal states; what each state permits or forbids elsewhere in the system.
+DIAGRAM: Mermaid "stateDiagram-v2" with [*] initial/final markers, transitions labeled event [guard].
+READY: 4+ states, guards on at least one transition, illegal transitions explicitly considered.`
+  },
+  {
+    id: "testing",
+    label: "Testing",
+    boardTitle: "Coverage Map — Use Cases → Tests",
+    boardSub: "Every use case and failure flow earns at least one test",
+    dialect: "graph LR",
+    hints: ["What's boundary-value testing?", "How do I test a state machine?", "What did we miss?"],
+    instructions: `
+PHASE: Test derivation — the payoff of the whole model.
+Show the student that their models ARE their test plan: each use case main flow → an acceptance test; each alt/failure flow → a negative test; each state transition (and each ILLEGAL transition) → a state test; each invariant and multiplicity from the class diagram → a validation test.
+Work through it use case by use case, asking the student to propose the test before you refine it. Push for concrete boundary values ("The member limit is 5 loans — which numbers do you test?").
+DIAGRAM: Mermaid "graph LR" mapping model elements to tests: subgraph "Model" with UC/state nodes; subgraph "Tests" with T1["T1: member at loan limit is refused"]; edges from element to its tests. Highlight any model element with NO outgoing edge — that is untested behavior.
+READY: every use case has at least one test, at least one negative and one boundary test exist. When ready, congratulate them and invite a retrospective: which single question during this project most changed their design?`
+  }
+];
+
+/* ---------------- Tutor persona ---------------- */
+
+const BASE_SYSTEM = `You are the tutor inside "OOAD Studio", an experimental platform where undergraduate students learn object-oriented analysis and design by building a real model in conversation with you.
+
+YOUR PEDAGOGY — these rules are absolute:
+1. SOCRATIC, NOT GENERATIVE. You ask; the student decides. Never invent actors, use cases, classes, or requirements the student has not stated or clearly implied. If the student asks you to "just do it", do a SMALL piece as a worked example, explain your reasoning, then hand the pencil back.
+2. ONE QUESTION AT A TIME. Never more than one question per reply (two only if the second is a tiny clarification). Keep replies under ~120 words of prose.
+3. INTRODUCE PROFESSIONAL CONCERNS CONTEXTUALLY. Security, privacy, access control, failure modes, and scalability enter as questions at the moment the conversation makes them natural — never as lectures.
+4. GO ONE LEVEL DEEPER. When a student gives a shallow answer ("doctors can access records"), probe the interesting edge once ("what about the on-call physician who isn't the patient's doctor?") before accepting it.
+5. ANSWER UML KNOWLEDGE QUESTIONS DIRECTLY. If the student asks what a diagram/notation is for, explain it clearly and concisely with a tiny example from THEIR project. Teaching notation is allowed; doing their analysis is not.
+6. THE DIAGRAM IS SHARED WORK. When (and only when) the conversation adds or changes model content, output the COMPLETE updated diagram source in a fenced block: \`\`\`mermaid ... \`\`\` using exactly the dialect specified for the current phase. Include everything established so far, changed minimally. One sentence noting what changed. If nothing changed, output no mermaid block.
+7. MERMAID MUST PARSE. Quote any node label containing spaces or punctuation. Keep IDs short and alphanumeric.
+8. SIGNAL READINESS. When the phase's READY criteria are genuinely met, include the exact token [READY_TO_ADVANCE] at the end of your reply (the platform turns it into a button — do not mention the token). Do not signal early to be nice.
+9. Warm, curious, concise. You are a design partner who respects the student enough to make them think.`;
+
+/* ---------------- State & persistence ---------------- */
+
+const LS = {
+  key: "ooadstudio.apiKey",
+  model: "ooadstudio.model",
+};
+
+let state = {
+  phaseIndex: 0,
+  history: [],
+  diagrams: {},                 // phaseId -> current mermaid source
+  diagramHistory: [],           // { phaseId, source, ts } — every revision, for export
+  completed: new Set(),
+  busy: false,
+  brief: null                   // { title, text }
+};
+
+const $ = (id) => document.getElementById(id);
+const chatEl = $("chat"), inputEl = $("input");
+
+function getKey()   { return localStorage.getItem(LS.key) || ""; }
+function getModel() { return localStorage.getItem(LS.model) || "claude-sonnet-4-6"; }
+
+/* ---------------- Phase rail ---------------- */
+
+function renderRail() {
+  const rail = $("phase-rail");
+  rail.innerHTML = "";
+  PHASES.forEach((p, i) => {
+    const node = document.createElement("div");
+    node.className = "phase-node "
+      + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : i > maxReached() ? "locked" : "");
+    if (i > 0) {
+      const wrap = document.createElement("span");
+      wrap.innerHTML = '<span class="phase-arrow"></span>';
+      node.appendChild(wrap);
+    }
+    const pill = document.createElement("button");
+    pill.className = "phase-pill";
+    pill.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>${p.label}`;
+    pill.onclick = () => { if (i <= maxReached() && !state.busy) switchPhase(i, true); };
+    node.appendChild(pill);
+    rail.appendChild(node);
+  });
+}
+function maxReached() {
+  let m = state.phaseIndex;
+  PHASES.forEach((p, i) => { if (state.completed.has(p.id)) m = Math.max(m, i + 1); });
+  return Math.min(m, PHASES.length - 1);
+}
+
+/* ---------------- Chat rendering ---------------- */
+
+function addMsg(role, text, diagramUpdated) {
+  const div = document.createElement("div");
+  div.className = "msg " + (role === "assistant" ? "tutor" : role === "note" ? "system-note" : "student");
+  const who = role === "assistant" ? "Tutor" : "You";
+  if (role === "note") {
+    div.textContent = text;
+  } else {
+    const paragraphs = text.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
+    div.innerHTML = `<div class="who">${who}</div>${paragraphs}` +
+      (diagramUpdated ? `<span class="diagram-note">↗ drafting board updated</span>` : "");
+  }
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function setThinking(on) {
+  let t = $("thinking-row");
+  if (on && !t) {
+    t = document.createElement("div");
+    t.id = "thinking-row";
+    t.className = "thinking";
+    t.innerHTML = 'tutor is sketching<span class="dots"></span>';
+    chatEl.appendChild(t);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  } else if (!on && t) t.remove();
+}
+
+/* ---------------- Board rendering ---------------- */
+
+let renderSeq = 0;
+async function renderBoard() {
+  const phase = PHASES[state.phaseIndex];
+  $("board-title").textContent = phase.boardTitle;
+  $("board-sub").textContent = phase.boardSub;
+  const src = state.diagrams[phase.id];
+  const host = $("diagram-host");
+  const errSlot = $("render-error-slot");
+  errSlot.innerHTML = "";
+  $("source-view").textContent = src || "(no diagram source yet)";
+
+  if (!src) {
+    host.innerHTML = `<div class="board-empty"><span class="glyph">⟨⟨ ${phase.label.toLowerCase()} ⟩⟩</span>Nothing on the drafting board for this phase yet — it appears as your conversation produces model content.</div>`;
+    return;
+  }
+  try {
+    const id = "mmd" + (++renderSeq);
+    const { svg } = await mermaid.render(id, src);
+    host.innerHTML = svg;
+  } catch (e) {
+    errSlot.innerHTML = `<div class="render-error">The tutor produced diagram source that didn't parse. The source is under the "Source" tab; ask the tutor to fix it. (The production build validates and retries server-side before you ever see this.)</div>`;
+    host.innerHTML = "";
+  }
+}
+
+$("tab-diagram").onclick = () => setView(false);
+$("tab-source").onclick = () => setView(true);
+function setView(sourceMode) {
+  $("tab-diagram").classList.toggle("on", !sourceMode);
+  $("tab-source").classList.toggle("on", sourceMode);
+  $("diagram-host").style.display = sourceMode ? "none" : "flex";
+  $("source-view").style.display = sourceMode ? "block" : "none";
+}
+
+/* ---------------- Hints ---------------- */
+
+function renderHints() {
+  const row = $("hints");
+  row.innerHTML = "";
+  PHASES[state.phaseIndex].hints.forEach(h => {
+    const b = document.createElement("button");
+    b.className = "hint-chip";
+    b.textContent = h;
+    b.onclick = () => { inputEl.value = h; inputEl.focus(); };
+    row.appendChild(b);
+  });
+}
+
+/* ---------------- API ---------------- */
+
+function systemPrompt() {
+  const phase = PHASES[state.phaseIndex];
+  const current = state.diagrams[phase.id];
+  let sp = BASE_SYSTEM;
+  if (state.brief) {
+    sp += "\n\n---- ASSIGNMENT BRIEF (the intended scope of this project; ground your questioning in it, but still make the student do the analysis — never recite conclusions from it) ----\n"
+        + state.brief.text;
+  }
+  sp += "\n\n---- CURRENT PHASE ----\n" + phase.instructions
+      + "\nMermaid dialect for this phase: " + phase.dialect
+      + "\n\n---- CURRENT DIAGRAM SOURCE (revise minimally; keep all established content) ----\n"
+      + (current ? current : "(none yet)");
+  return sp;
+}
+
+async function callTutor() {
+  const key = getKey();
+  if (!key) throw new Error("NO_KEY");
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: getModel(),
+      max_tokens: 1600,
+      system: systemPrompt(),
+      messages: state.history
+    })
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err.error && err.error.message) || ("HTTP " + response.status));
+  }
+  const data = await response.json();
+  return data.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+}
+
+function processReply(raw) {
+  let text = raw;
+  const blocks = [...text.matchAll(/```mermaid\s*([\s\S]*?)```/g)];
+  let diagramUpdated = false;
+  if (blocks.length) {
+    const src = blocks[blocks.length - 1][1].trim();
+    if (src) {
+      const phaseId = PHASES[state.phaseIndex].id;
+      state.diagrams[phaseId] = src;
+      state.diagramHistory.push({ phaseId, source: src, ts: new Date().toISOString() });
+      diagramUpdated = true;
+    }
+    text = text.replace(/```mermaid\s*[\s\S]*?```/g, "").trim();
+  }
+  let ready = false;
+  if (text.includes("[READY_TO_ADVANCE]")) {
+    ready = true;
+    text = text.replace(/\[READY_TO_ADVANCE\]/g, "").trim();
+  }
+  return { text, diagramUpdated, ready };
+}
+
+async function send(userText, silentUser) {
+  if (state.busy) return;
+  if (!getKey()) { openSettings(true); return; }
+  state.busy = true;
+  $("btn-send").disabled = true;
+  if (!silentUser) addMsg("user", userText);
+  state.history.push({ role: "user", content: userText });
+  setThinking(true);
+  try {
+    const raw = await callTutor();
+    state.history.push({ role: "assistant", content: raw });
+    const { text, diagramUpdated, ready } = processReply(raw);
+    setThinking(false);
+    addMsg("assistant", text || "(The tutor updated the diagram.)", diagramUpdated);
+    if (diagramUpdated) renderBoard();
+    if (ready) showAdvance();
+  } catch (e) {
+    setThinking(false);
+    state.history.pop(); // keep history consistent on failure
+    if (e.message === "NO_KEY") openSettings(true);
+    else addMsg("note", "API error: " + e.message + " — check your key and account credit in Settings, then resend.");
+  }
+  state.busy = false;
+  $("btn-send").disabled = false;
+}
+
+/* ---------------- Advancement ---------------- */
+
+function showAdvance() {
+  const next = PHASES[state.phaseIndex + 1];
+  if (!next) {
+    $("advance-text").textContent = "Project complete — your model runs from actors to tests. 🎓";
+    $("btn-advance").style.display = "none";
+    $("advance-banner").classList.add("show");
+    state.completed.add(PHASES[state.phaseIndex].id);
+    renderRail();
+    return;
+  }
+  $("advance-text").textContent = `Your tutor thinks "${PHASES[state.phaseIndex].label}" is in good shape.`;
+  $("btn-advance").textContent = `Continue to ${next.label} →`;
+  $("btn-advance").style.display = "";
+  $("advance-banner").classList.add("show");
+}
+
+$("btn-advance").onclick = () => {
+  state.completed.add(PHASES[state.phaseIndex].id);
+  $("advance-banner").classList.remove("show");
+  switchPhase(state.phaseIndex + 1, false);
+};
+
+function switchPhase(index, isRevisit) {
+  state.phaseIndex = index;
+  renderRail(); renderHints(); renderBoard(); setView(false);
+  const phase = PHASES[index];
+  if (!isRevisit || !state.diagrams[phase.id]) {
+    send(`(The student has moved to the "${phase.label}" phase. Open this phase: in one or two sentences say what this diagram is for and why it comes now, then ask your first question — grounded in what the project has established so far.)`, true);
+  }
+}
+
+/* ---------------- Assignment brief ---------------- */
+
+function renderBriefBanner() {
+  const b = $("brief-banner");
+  if (state.brief) {
+    b.textContent = "Working against brief: " + (state.brief.title || "untitled");
+    b.classList.add("show");
+  } else {
+    b.classList.remove("show");
+  }
+}
+$("btn-brief").onclick = () => {
+  $("brief-title").value = state.brief ? state.brief.title : "";
+  $("brief-text").value = state.brief ? state.brief.text : "";
+  $("brief-modal").classList.add("show");
+};
+$("brief-cancel").onclick = () => $("brief-modal").classList.remove("show");
+$("brief-clear").onclick = () => {
+  state.brief = null;
+  renderBriefBanner();
+  $("brief-modal").classList.remove("show");
+  addMsg("note", "Assignment brief cleared — tutor is now running brief-free.");
+};
+$("brief-save").onclick = () => {
+  const text = $("brief-text").value.trim();
+  if (!text) { $("brief-modal").classList.remove("show"); return; }
+  state.brief = { title: $("brief-title").value.trim() || "untitled brief", text };
+  renderBriefBanner();
+  $("brief-modal").classList.remove("show");
+  addMsg("note", "Assignment brief loaded: " + state.brief.title + " — the tutor will ground its questions in it from the next message.");
+};
+
+/* ---------------- Export ---------------- */
+
+$("btn-export").onclick = () => {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    model: getModel(),
+    brief: state.brief,
+    phaseIndex: state.phaseIndex,
+    completedPhases: [...state.completed],
+    conversation: state.history,
+    currentDiagrams: state.diagrams,
+    diagramRevisionHistory: state.diagramHistory
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const label = state.brief ? state.brief.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() : "session";
+  a.download = "ooad-studio-" + label + "-" + Date.now() + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* ---------------- Settings ---------------- */
+
+function openSettings(becauseMissing) {
+  $("set-key").value = getKey();
+  $("set-model").value = getModel();
+  $("settings-modal").classList.add("show");
+  if (becauseMissing) $("set-key").focus();
+}
+$("btn-settings").onclick = () => openSettings(false);
+$("set-cancel").onclick = () => $("settings-modal").classList.remove("show");
+$("set-save").onclick = () => {
+  const k = $("set-key").value.trim();
+  if (k) localStorage.setItem(LS.key, k); else localStorage.removeItem(LS.key);
+  localStorage.setItem(LS.model, $("set-model").value);
+  $("settings-modal").classList.remove("show");
+  refreshSettingsButton();
+};
+function refreshSettingsButton() {
+  $("btn-settings").classList.toggle("needs-setup", !getKey());
+  $("btn-settings").textContent = getKey() ? "⚙ Settings" : "⚙ Add API key";
+}
+
+/* ---------------- Reset & boot ---------------- */
+
+$("btn-reset").onclick = () => {
+  if (!confirm("Start a new project? The current conversation and diagrams will be cleared. Export first if you want to keep this run.")) return;
+  const brief = state.brief; // keep the loaded brief across resets — useful when re-running the same assignment
+  state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief };
+  chatEl.innerHTML = "";
+  $("advance-banner").classList.remove("show");
+  boot(true);
+};
+
+$("btn-send").onclick = () => {
+  const v = inputEl.value.trim();
+  if (!v) return;
+  inputEl.value = "";
+  send(v, false);
+};
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("btn-send").click(); }
+});
+
+function boot(isReset) {
+  renderRail(); renderHints(); renderBoard(); setView(false); renderBriefBanner(); refreshSettingsButton();
+  addMsg("assistant",
+    "Welcome to the studio. We're going to design a software system together, the way an analyst would — starting not with screens or code, but with people.\n\nTell me about the system you have in mind: in a sentence or two, what should it do, and for whom? (You can also ask me anything about UML at any point — that's what I'm here for.)");
+  state.history.push({ role: "user", content: "(The student has opened OOAD Studio. You have greeted them and asked them to describe, in a sentence or two, what their system should do and for whom.)" });
+  state.history.push({ role: "assistant", content: "Welcome! Tell me about the system you have in mind: what should it do, and for whom?" });
+  if (!getKey() && !isReset) openSettings(true);
+}
+
+boot(false);
+</script>
+</body>
+</html>
