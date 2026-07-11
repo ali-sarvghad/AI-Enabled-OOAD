@@ -131,6 +131,30 @@
     padding: 2px 8px; border-radius: 4px;
   }
   .msg p + p { margin-top: 8px; }
+  /* Rendered Markdown inside tutor replies */
+  .msg .md p { margin: 0; }
+  .msg .md p + p, .msg .md ul, .msg .md ol, .msg .md blockquote, .msg .md pre, .msg .md .md-h { margin-top: 8px; }
+  .msg .md strong { font-weight: 700; color: var(--ink); }
+  .msg .md em { font-style: italic; }
+  .msg .md a { color: var(--blueprint); text-decoration: underline; text-underline-offset: 2px; }
+  .msg .md a:hover { color: var(--blueprint-deep); }
+  .msg .md ul, .msg .md ol { padding-left: 20px; }
+  .msg .md li { margin: 2px 0; }
+  .msg .md li::marker { color: var(--blueprint); }
+  .msg .md .md-h { font-weight: 700; font-size: 13.5px; color: var(--blueprint-deep); letter-spacing: 0.01em; }
+  .msg .md code {
+    font-family: var(--mono); font-size: 12.5px;
+    background: var(--blueprint-soft); color: var(--blueprint-deep);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .msg .md pre {
+    background: #10192B; color: #CFE0F5; border-radius: 8px;
+    padding: 10px 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5;
+  }
+  .msg .md pre code { background: none; color: inherit; padding: 0; }
+  .msg .md blockquote {
+    border-left: 3px solid var(--line); padding-left: 10px; color: var(--ink-soft); font-style: italic;
+  }
   .thinking { align-self: flex-start; color: var(--ink-soft); font-size: 13px; font-style: italic; padding-left: 14px; }
   .thinking .dots::after { content: "…"; animation: pulse 1.2s infinite; }
   @keyframes pulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
@@ -704,8 +728,13 @@ function addMsg(role, text, diagramUpdated, attachments) {
     div.textContent = text;
   } else {
     const atts = attachments && attachments.length ? attachmentPreviewHtml(attachments) : "";
-    const paragraphs = text ? text.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("") : "";
-    div.innerHTML = `<div class="who">${who}</div>${atts}${paragraphs}` +
+    // Tutor replies are rendered as Markdown (bold/italics/lists/links);
+    // student messages stay plain escaped text.
+    const body = !text ? ""
+      : role === "assistant"
+        ? `<div class="md">${renderMarkdown(text)}</div>`
+        : text.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
+    div.innerHTML = `<div class="who">${who}</div>${atts}${body}` +
       (diagramUpdated ? `<span class="diagram-note">↗ drafting board updated</span>` : "");
   }
   chatEl.appendChild(div);
@@ -723,6 +752,79 @@ function attachmentPreviewHtml(attachments) {
 }
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/* Minimal, self-contained Markdown renderer for tutor replies. Supports
+   headings, unordered/ordered lists, blockquotes, fenced + inline code,
+   bold, italics, and [text](http…) links. Everything is HTML-escaped
+   first, so model output can never inject markup. No external library
+   (keeps the single-file build and its strict inline footprint). */
+function renderMarkdown(src) {
+  src = String(src).replace(/\r\n?/g, "\n");
+
+  // Pull fenced code blocks out first (store raw; escape at emit time).
+  // Plain-ASCII sentinels that won't collide with prose or be altered by esc().
+  const codeBlocks = [];
+  src = src.replace(/```[^\n]*\n?([\s\S]*?)```/g, (m, code) => {
+    codeBlocks.push(code.replace(/\n$/, ""));
+    return "\n@@CODEBLK" + (codeBlocks.length - 1) + "@@\n";
+  });
+
+  const esc = escapeHtml;
+
+  function inline(s) {
+    // protect inline code spans behind a sentinel, restore after formatting
+    const spans = [];
+    s = s.replace(/`([^`]+)`/g, (m, c) => { spans.push(c); return "@@CODESPN" + (spans.length - 1) + "@@"; });
+    // links [text](url) — only http(s), open safely in a new tab
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      (m, t, u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`);
+    // bare urls -> links (skip ones already inside an href attribute)
+    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+      (m, pre, u) => `${pre}<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+    // bold then italic
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    s = s.replace(/(^|[^_\w])_([^_\n]+)_(?![\w])/g, "$1<em>$2</em>");
+    // restore code spans
+    s = s.replace(/@@CODESPN(\d+)@@/g, (m, i) => `<code>${esc(spans[+i])}</code>`);
+    return s;
+  }
+
+  const lines = esc(src).split("\n");
+  const out = [];
+  let para = [];
+  const flushPara = () => { if (para.length) { out.push("<p>" + para.map(inline).join("<br>") + "</p>"); para = []; } };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    let m;
+    if ((m = line.match(/^@@CODEBLK(\d+)@@\s*$/))) {
+      flushPara(); out.push("<pre><code>" + esc(codeBlocks[+m[1]]) + "</code></pre>"); i++; continue;
+    }
+    if (/^\s*$/.test(line)) { flushPara(); i++; continue; }
+    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) {
+      flushPara(); out.push('<div class="md-h">' + inline(m[2]) + "</div>"); i++; continue;
+    }
+    if (/^\s*>\s?/.test(line)) {
+      flushPara(); const buf = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
+      out.push("<blockquote>" + buf.map(inline).join("<br>") + "</blockquote>"); continue;
+    }
+    if (/^\s*[-*+]\s+/.test(line)) {
+      flushPara(); const items = [];
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*[-*+]\s+/, "")); i++; }
+      out.push("<ul>" + items.map(t => "<li>" + inline(t) + "</li>").join("") + "</ul>"); continue;
+    }
+    if (/^\s*\d+\.\s+/.test(line)) {
+      flushPara(); const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; }
+      out.push("<ol>" + items.map(t => "<li>" + inline(t) + "</li>").join("") + "</ol>"); continue;
+    }
+    para.push(line); i++;
+  }
+  flushPara();
+  return out.join("");
 }
 function setThinking(on) {
   let t = $("thinking-row");
