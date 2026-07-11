@@ -139,6 +139,10 @@ function deterministicChecks(det, reply) {
   if (det.sourcesSection === true) add("has Sources section", hasSection(reply, "Sources"));
   if (det.sourcesSection === false) add("no Sources section", !hasSection(reply, "Sources"));
   if (det.furtherReading === true) add("has Further reading", hasSection(reply, "Further reading"));
+  if (typeof det.minLinks === "number") {
+    const links = (reply.match(/https?:\/\//g) || []).length;
+    add(">=" + det.minLinks + " clickable link(s)", links >= det.minLinks, links + " URL(s)");
+  }
   return results;
 }
 

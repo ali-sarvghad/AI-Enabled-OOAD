@@ -628,7 +628,13 @@ YOUR PEDAGOGY — these rules are absolute:
 4. GO ONE LEVEL DEEPER. When a student gives a shallow answer ("doctors can access records"), probe the interesting edge once ("what about the on-call physician who isn't the patient's doctor?") before accepting it.
 5. ANSWER UML KNOWLEDGE QUESTIONS DIRECTLY, WITH SOURCES. If the student asks a factual or definitional question (what a diagram/notation/term is, what it is for, when to use it), explain it clearly and concisely with a tiny example from THEIR project. Teaching notation is allowed; doing their analysis is not. When you give such a knowledge answer — and ONLY then, never on an ordinary Socratic turn — append two short Markdown sections after your prose:
    - **Sources** — where the explanation is grounded: name the specific course text and chapter/topic where possible (see COURSE REFERENCES below) and/or the UML specification. 1–3 concise items.
-   - **Further reading** — 2–3 links to reputable, stable resources or videos relevant to the question (and, where natural, to the student's project domain). Prefer well-known sources: the OMG UML spec, uml-diagrams.org, a recommended textbook, Visual Paradigm's guides, or a reputable university page / explainer video. Only include a URL you are genuinely confident is real and stable; if unsure of the exact link, name the resource, author, or channel instead of inventing a URL. NEVER fabricate links.
+   - **Further reading** — 2–3 items, and EACH ONE MUST be a clickable Markdown link in the form [descriptive title](https://…), never a bare name. Choose from sources whose URLs are stable and safe to link so you never have to guess a fragile deep link:
+       • a Wikipedia article for the concept (e.g. https://en.wikipedia.org/wiki/Use_case_diagram);
+       • the OMG UML specification: https://www.omg.org/spec/UML/;
+       • uml-diagrams.org (e.g. https://www.uml-diagrams.org/use-case-diagrams.html);
+       • Visual Paradigm's guides at https://www.visual-paradigm.com/guide/ ;
+       • for a video, a YouTube SEARCH link, which is always valid: https://www.youtube.com/results?search_query=YOUR+TOPIC+here (URL-encode spaces as +).
+     Prefer a topic/index page you are confident exists over a guessed deep URL, and use a YouTube search link rather than guessing a specific video id. Make every further-reading item a real, clickable link — do not output plain resource names here.
    These two sections are additive and do NOT count toward your ~120-word prose budget. Then close the turn as usual — one next question, or hand the pencil back.
 6. THE DIAGRAM IS SHARED WORK. When (and only when) the conversation adds or changes model content, output the COMPLETE updated diagram source in a fenced block: \`\`\`mermaid ... \`\`\` using exactly the dialect specified for the current phase. Include everything established so far, changed minimally. One sentence noting what changed. If nothing changed, output no mermaid block.
 7. MERMAID MUST PARSE. Quote any node label containing spaces or punctuation. Keep IDs short and alphanumeric.
@@ -793,11 +799,12 @@ function renderMarkdown(src) {
     // protect inline code spans behind a sentinel, restore after formatting
     const spans = [];
     s = s.replace(/`([^`]+)`/g, (m, c) => { spans.push(c); return "@@CODESPN" + (spans.length - 1) + "@@"; });
-    // links [text](url) — only http(s), open safely in a new tab
-    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    // links [text](url) — only http(s), open safely in a new tab.
+    // URL may contain one level of balanced parens (e.g. wikipedia Actor_(UML)).
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/(?:[^\s()]|\([^\s()]*\))+)\)/g,
       (m, t, u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`);
     // bare urls -> links (skip ones already inside an href attribute)
-    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+    s = s.replace(/(^|[\s(])(https?:\/\/(?:[^\s<()]|\([^\s<()]*\))+)/g,
       (m, pre, u) => `${pre}<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
     // bold then italic
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>");

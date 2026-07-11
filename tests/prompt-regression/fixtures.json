@@ -42,11 +42,11 @@
       "title": "Knowledge question → direct answer + Sources + Further reading",
       "student": "What exactly is a system boundary, and why does it matter?",
       "expect": {
-        "deterministic": { "mermaid": "none", "readyToken": false, "sourcesSection": true, "furtherReading": true, "maxQuestions": 2 },
+        "deterministic": { "mermaid": "none", "readyToken": false, "sourcesSection": true, "furtherReading": true, "minLinks": 2, "maxQuestions": 2 },
         "judge": [
           "Directly and correctly explains what a system boundary is",
           "Grounds the explanation with named sources (a textbook and/or the UML specification)",
-          "Offers 2-3 further-reading links or clearly named resources/videos",
+          "The Further reading section contains 2-3 clickable https links, not plain resource names",
           "Ends by handing back or asking a single next question, not several"
         ]
       }
