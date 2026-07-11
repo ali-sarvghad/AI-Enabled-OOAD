@@ -7,7 +7,7 @@ An experimental, AI-guided learning environment for object-oriented analysis and
 
 Each phase opens by explaining *why that diagram exists* and what question it answers, then elicits the model from the student — the tutor never does the analysis for them. (Activity, component, and deployment diagrams have no native Mermaid form and are drawn as flowchart approximations; full UML for them is planned via a server-side PlantUML renderer — see `CLAUDE.md`.)
 
-**This build is the instructor testing tool.** It is a single static page, deployable on GitHub Pages, that calls the Anthropic API directly from the browser with the instructor's own API key. It exists to trial the pedagogy against past coursework briefs before any student-facing platform is built. See `CLAUDE.md` for the full product vision and development roadmap.
+**This build is the instructor testing tool.** It is a single static page, deployable on GitHub Pages, that calls a chosen AI provider (Anthropic Claude, OpenAI GPT, or Google Gemini) directly from the browser with the instructor's own API key — so the same pedagogy can be trialed and compared across vendors and models. It exists to trial the pedagogy against past coursework briefs before any student-facing platform is built. See `CLAUDE.md` for the full product vision and development roadmap.
 
 ## Deploy on GitHub Pages
 
@@ -23,11 +23,12 @@ Any push to `main` redeploys automatically.
 
 ## First run
 
-1. Get an Anthropic API key from https://console.anthropic.com/ (Settings → API keys) and add credit to the account.
-2. Open the deployed page → **⚙ Add API key** → paste the key → Save.
-   The key is stored in your browser's localStorage only. It is sent only to `api.anthropic.com`, never to GitHub or anywhere else.
+1. Open the deployed page → **⚙ Add API key** → **choose your provider** (Anthropic Claude, OpenAI GPT, or Google Gemini).
+2. Paste that provider's API key, then click **Load models** — the model list is fetched live from the provider, so you always pick from what your key can actually use. Choose a model and **Save**.
+   - Get a key from: Anthropic → https://console.anthropic.com/ · OpenAI → https://platform.openai.com/api-keys · Google (Gemini) → https://aistudio.google.com/apikey. Each provider needs its own credit/quota.
+   - A separate key is remembered per provider, so you can switch vendors without re-entering keys. Keys are stored in your browser's localStorage only and are sent only to the provider you select — never to GitHub or anywhere else.
 3. Optionally click **Assignment brief** and paste a past coursework scenario (e.g., a CW1 brief). The tutor grounds its questioning in the brief while still making the "student" do the analysis.
-4. Work through the phases as a student would. Use **Export session** at any point to download a JSON file containing the full conversation, the current diagrams, and every diagram revision with timestamps — useful for comparing runs across briefs, models, or prompt variants.
+4. Work through the phases as a student would. Use **Export session** at any point to download a JSON file containing the provider, model, full conversation, current diagrams, and every diagram revision with timestamps — useful for comparing runs across briefs, providers, models, or prompt variants.
 
 ## Testing workflow suggestion
 
@@ -38,8 +39,9 @@ For each past assignment: load the brief → play a *strong* student → export;
 - **Never commit an API key to this repository.** The key belongs in the browser's settings panel only.
 - The deployed page is safe to be public *because it contains no key* — anyone visiting it would need their own key to use it.
 - **Do not give this build to students.** A browser-held key pattern is acceptable for one trusted user only. The student-facing platform (see `CLAUDE.md`) proxies all model calls through a backend, where keys, rate limits, and logging live.
-- If a key is ever exposed, revoke it immediately in the Anthropic console.
+- If a key is ever exposed, revoke it immediately in that provider's console (Anthropic / OpenAI / Google AI Studio).
+- The three providers' browser endpoints all permit direct key-based calls (Anthropic via an explicit browser-access header, OpenAI and Gemini via CORS). This is fine for one trusted instructor; it is exactly the pattern the production backend removes.
 
 ## Cost expectations
 
-A full two-stage run (eleven phases) is typically 40–120 model calls. With the default model (Sonnet), expect roughly the cost of a coffee per several full runs; the cheaper Haiku option in Settings is fine for quick prompt-iteration loops, and Opus is available when you want to see the ceiling.
+A full two-stage run (eleven phases) is typically 40–120 model calls. Costs depend on the provider and model you pick; a flagship chat model (Claude Sonnet, GPT-4o, or Gemini Pro) is roughly the cost of a coffee per several full runs, while the lighter models (Haiku, GPT-4o-mini, Gemini Flash) are much cheaper and fine for quick prompt-iteration loops. Load models per provider to see everything your key can use.

@@ -229,6 +229,12 @@
   }
   .modal textarea { font-size: 13px; line-height: 1.5; resize: vertical; }
   .modal input:focus, .modal select:focus, .modal textarea:focus { outline: none; border-color: var(--blueprint); }
+  .modal select:disabled { opacity: 0.6; cursor: default; }
+  .key-row { display: flex; gap: 8px; align-items: stretch; }
+  .key-row input { flex: 1; }
+  .key-row button { white-space: nowrap; flex-shrink: 0; }
+  .model-status { font-size: 12px; color: var(--ink-soft); margin-top: 6px; min-height: 15px; line-height: 1.4; }
+  .model-status.error { color: var(--warn); }
   .modal .warn-box {
     background: var(--warn-soft); border: 1px solid var(--warn);
     border-radius: 8px; padding: 10px 12px;
@@ -302,16 +308,24 @@
 <div class="modal-backdrop" id="settings-modal">
   <div class="modal">
     <h2>Settings</h2>
-    <div class="sub">This prototype calls the Anthropic API directly from your browser. Your key is kept in this browser's local storage only — it is never sent anywhere except to Anthropic.</div>
-    <label for="set-key">Anthropic API key</label>
-    <input type="password" id="set-key" placeholder="sk-ant-…" autocomplete="off">
-    <label for="set-model">Model</label>
-    <select id="set-model">
-      <option value="claude-sonnet-5">claude-sonnet-5 (recommended)</option>
-      <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (cheaper, for quick tests)</option>
-      <option value="claude-opus-4-8">claude-opus-4-8 (strongest, most expensive)</option>
+    <div class="sub">This prototype calls the selected provider's API directly from your browser. Your key is kept in this browser's local storage only — it is sent only to the provider you choose. A separate key is remembered per provider.</div>
+    <label for="set-provider">AI provider</label>
+    <select id="set-provider">
+      <option value="anthropic">Anthropic (Claude)</option>
+      <option value="openai">OpenAI (GPT)</option>
+      <option value="gemini">Google (Gemini)</option>
     </select>
-    <div class="warn-box"><strong>Instructor use only.</strong> Keys in the browser are acceptable for personal testing, but this pattern must never be used in a student-facing deployment — the production platform proxies the API through a backend. Never commit a key to the repository.</div>
+    <label for="set-key">API key</label>
+    <div class="key-row">
+      <input type="password" id="set-key" placeholder="sk-ant-…" autocomplete="off">
+      <button type="button" class="btn-ghost" id="set-loadmodels">Load models</button>
+    </div>
+    <div class="model-status" id="model-status" aria-live="polite"></div>
+    <label for="set-model">Model</label>
+    <select id="set-model" disabled>
+      <option value="">Enter your key, then “Load models”…</option>
+    </select>
+    <div class="warn-box"><strong>Instructor use only.</strong> Keys in the browser are acceptable for personal testing, but this pattern must never be used in a student-facing deployment — the production platform proxies every provider through a backend. Never commit a key to the repository.</div>
     <div class="actions">
       <button class="btn-ghost" id="set-cancel">Cancel</button>
       <button class="btn-primary" id="set-save">Save</button>
@@ -562,9 +576,33 @@ YOUR PEDAGOGY — these rules are absolute:
 /* ---------------- State & persistence ---------------- */
 
 const LS = {
-  key: "ooadstudio.apiKey",
-  model: "ooadstudio.model",
+  provider: "ooadstudio.provider",
+  keyPrefix: "ooadstudio.key.",      // + providerId
+  modelPrefix: "ooadstudio.model.",  // + providerId
+  legacyKey: "ooadstudio.apiKey",    // pre-multi-provider (Anthropic only)
+  legacyModel: "ooadstudio.model",
 };
+
+const DEFAULT_MODEL = {
+  anthropic: "claude-sonnet-5",
+  openai: "gpt-4o",
+  gemini: "gemini-1.5-pro",
+};
+
+// One-time migration from the single-provider (Anthropic) storage layout.
+(function migrateLegacyStorage() {
+  const lk = localStorage.getItem(LS.legacyKey);
+  if (lk && !localStorage.getItem(LS.keyPrefix + "anthropic")) {
+    localStorage.setItem(LS.keyPrefix + "anthropic", lk);
+    localStorage.removeItem(LS.legacyKey);
+  }
+  const lm = localStorage.getItem(LS.legacyModel);
+  if (lm && !localStorage.getItem(LS.modelPrefix + "anthropic")) {
+    localStorage.setItem(LS.modelPrefix + "anthropic", lm === "claude-sonnet-4-6" ? "claude-sonnet-5" : lm);
+    localStorage.removeItem(LS.legacyModel);
+  }
+  if (!localStorage.getItem(LS.provider)) localStorage.setItem(LS.provider, "anthropic");
+})();
 
 let state = {
   phaseIndex: 0,
@@ -579,12 +617,13 @@ let state = {
 const $ = (id) => document.getElementById(id);
 const chatEl = $("chat"), inputEl = $("input");
 
-function getKey()   { return localStorage.getItem(LS.key) || ""; }
+function getProvider() { return localStorage.getItem(LS.provider) || "anthropic"; }
+function getKey()      { return localStorage.getItem(LS.keyPrefix + getProvider()) || ""; }
 function getModel() {
-  const m = localStorage.getItem(LS.model);
-  // Migrate away from the retired default id if a stale value is stored.
-  if (!m || m === "claude-sonnet-4-6") return "claude-sonnet-5";
-  return m;
+  const p = getProvider();
+  let m = localStorage.getItem(LS.modelPrefix + p);
+  if (p === "anthropic" && m === "claude-sonnet-4-6") m = null; // retire stale default id
+  return m || DEFAULT_MODEL[p];
 }
 
 /* ---------------- Phase rail ---------------- */
@@ -726,30 +765,105 @@ function systemPrompt() {
   return sp;
 }
 
+/* ---------------- Provider adapters ----------------
+   Each provider knows how to (a) list its usable chat models given a key,
+   and (b) run one tutor turn: (system, history) -> assistant text.
+   history is [{role:'user'|'assistant', content:string}]. All calls are
+   made directly from the browser — an instructor-testing exception; the
+   production platform proxies every provider server-side (see CLAUDE.md). */
+
+const MAX_TOKENS = 1600;
+
+async function providerError(response) {
+  const e = await response.json().catch(() => ({}));
+  const msg = e && e.error && (e.error.message || (typeof e.error === "string" ? e.error : e.error.status));
+  return new Error(msg || ("HTTP " + response.status));
+}
+
+const PROVIDERS = {
+  anthropic: {
+    label: "Anthropic (Claude)",
+    keyPlaceholder: "sk-ant-…",
+    async listModels(key) {
+      const r = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" }
+      });
+      if (!r.ok) throw await providerError(r);
+      const d = await r.json();
+      return (d.data || []).map(m => ({ id: m.id, label: m.display_name || m.id }));
+    },
+    async chat(key, model, system, history) {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json", "x-api-key": key,
+          "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages: history })
+      });
+      if (!r.ok) throw await providerError(r);
+      const d = await r.json();
+      return d.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+    }
+  },
+  openai: {
+    label: "OpenAI (GPT)",
+    keyPlaceholder: "sk-…",
+    async listModels(key) {
+      const r = await fetch("https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + key } });
+      if (!r.ok) throw await providerError(r);
+      const d = await r.json();
+      return (d.data || [])
+        .map(m => m.id)
+        .filter(id => /^(gpt-|o1|o3|o4|chatgpt)/.test(id)
+          && !/(instruct|audio|realtime|search|transcribe|tts|image|embedding|moderation|dall-e|whisper)/.test(id))
+        .sort()
+        .map(id => ({ id, label: id }));
+    },
+    async chat(key, model, system, history) {
+      const messages = [{ role: "system", content: system }].concat(history);
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        // max_completion_tokens is the current, broadly-accepted cap param.
+        body: JSON.stringify({ model, messages, max_completion_tokens: MAX_TOKENS })
+      });
+      if (!r.ok) throw await providerError(r);
+      const d = await r.json();
+      return (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || "";
+    }
+  },
+  gemini: {
+    label: "Google (Gemini)",
+    keyPlaceholder: "AIza…",
+    async listModels(key) {
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key));
+      if (!r.ok) throw await providerError(r);
+      const d = await r.json();
+      return (d.models || [])
+        .filter(m => (m.supportedGenerationMethods || []).includes("generateContent") && /gemini/i.test(m.name))
+        .map(m => ({ id: m.name.replace(/^models\//, ""), label: m.displayName || m.name.replace(/^models\//, "") }));
+    },
+    async chat(key, model, system, history) {
+      // Gemini roles are 'user' and 'model'; the system prompt is a separate field.
+      const contents = history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+      const body = { systemInstruction: { parts: [{ text: system }] }, contents, generationConfig: { maxOutputTokens: MAX_TOKENS } };
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key), {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      if (!r.ok) throw await providerError(r);
+      const d = await r.json();
+      const cand = d.candidates && d.candidates[0];
+      if (!cand || !cand.content) throw new Error("No response returned" + (cand && cand.finishReason ? " (finish reason: " + cand.finishReason + ")" : "") + ".");
+      return (cand.content.parts || []).map(p => p.text || "").join("");
+    }
+  }
+};
+
 async function callTutor() {
   const key = getKey();
   if (!key) throw new Error("NO_KEY");
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    },
-    body: JSON.stringify({
-      model: getModel(),
-      max_tokens: 1600,
-      system: systemPrompt(),
-      messages: state.history
-    })
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err.error && err.error.message) || ("HTTP " + response.status));
-  }
-  const data = await response.json();
-  return data.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+  return PROVIDERS[getProvider()].chat(key, getModel(), systemPrompt(), state.history);
 }
 
 function processReply(raw) {
@@ -889,6 +1003,7 @@ $("btn-export").onclick = () => {
     // so v1 tooling keeps working; v2 readers can additionally group by stage.
     exportVersion: 2,
     exportedAt: new Date().toISOString(),
+    provider: getProvider(),
     model: getModel(),
     brief: state.brief,
     stages: STAGES.map(s => ({ id: s.id, label: s.label, cw: s.cw })),
@@ -911,18 +1026,80 @@ $("btn-export").onclick = () => {
 
 /* ---------------- Settings ---------------- */
 
+function setModelStatus(msg, isError) {
+  const el = $("model-status");
+  el.textContent = msg || "";
+  el.classList.toggle("error", !!isError);
+}
+
+// Fill the model <select>; when empty, show a disabled prompt option.
+function populateModelSelect(models, selected) {
+  const sel = $("set-model");
+  sel.innerHTML = "";
+  if (!models || !models.length) {
+    sel.innerHTML = '<option value="">Enter your key, then “Load models”…</option>';
+    sel.disabled = true;
+    return;
+  }
+  models.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = m.label || m.id;
+    sel.appendChild(o);
+  });
+  sel.disabled = false;
+  if (selected && models.some(m => m.id === selected)) sel.value = selected;
+}
+
+// Reflect the chosen provider: its stored key, key-format hint, and any
+// previously saved model (shown as a single option so Save works without a
+// fresh fetch; "Load models" refreshes the full list from the provider).
+function syncProviderUI(p) {
+  const prov = PROVIDERS[p];
+  $("set-key").placeholder = prov.keyPlaceholder;
+  $("set-key").value = localStorage.getItem(LS.keyPrefix + p) || "";
+  const storedModel = localStorage.getItem(LS.modelPrefix + p);
+  populateModelSelect(storedModel ? [{ id: storedModel, label: storedModel }] : null, storedModel);
+  setModelStatus(storedModel ? "Saved model shown — “Load models” to see everything this key can use." : "", false);
+}
+
 function openSettings(becauseMissing) {
-  $("set-key").value = getKey();
-  $("set-model").value = getModel();
+  $("set-provider").value = getProvider();
+  syncProviderUI(getProvider());
   $("settings-modal").classList.add("show");
   if (becauseMissing) $("set-key").focus();
 }
 $("btn-settings").onclick = () => openSettings(false);
 $("set-cancel").onclick = () => $("settings-modal").classList.remove("show");
+$("set-provider").onchange = () => syncProviderUI($("set-provider").value);
+
+$("set-loadmodels").onclick = async () => {
+  const p = $("set-provider").value;
+  const key = $("set-key").value.trim();
+  if (!key) { setModelStatus("Enter your API key first.", true); $("set-key").focus(); return; }
+  const btn = $("set-loadmodels");
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = "Loading…";
+  setModelStatus("Contacting " + PROVIDERS[p].label + "…", false);
+  try {
+    const models = await PROVIDERS[p].listModels(key);
+    if (!models.length) throw new Error("No compatible chat models were returned for this key.");
+    populateModelSelect(models, localStorage.getItem(LS.modelPrefix + p) || DEFAULT_MODEL[p]);
+    setModelStatus(models.length + " model" + (models.length > 1 ? "s" : "") + " available.", false);
+  } catch (e) {
+    setModelStatus("Couldn’t load models: " + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
+};
+
 $("set-save").onclick = () => {
-  const k = $("set-key").value.trim();
-  if (k) localStorage.setItem(LS.key, k); else localStorage.removeItem(LS.key);
-  localStorage.setItem(LS.model, $("set-model").value);
+  const p = $("set-provider").value;
+  const key = $("set-key").value.trim();
+  const model = $("set-model").value;
+  localStorage.setItem(LS.provider, p);
+  if (key) localStorage.setItem(LS.keyPrefix + p, key); else localStorage.removeItem(LS.keyPrefix + p);
+  if (model) localStorage.setItem(LS.modelPrefix + p, model);
   $("settings-modal").classList.remove("show");
   refreshSettingsButton();
 };
