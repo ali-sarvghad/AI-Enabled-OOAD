@@ -1,6 +1,11 @@
 # OOAD Studio — Research Prototype
 
-An experimental, AI-guided learning environment for object-oriented analysis and design (UML). A Socratic tutor walks a student through six phases — Actors & Goals → Use Cases → Class Diagram → Sequence → States → Testing — co-constructing diagrams-as-code (Mermaid) on a live drafting board, one question at a time.
+An experimental, AI-guided learning environment for object-oriented analysis and design (UML). A Socratic tutor walks a student through the OOAD lifecycle in two stages, mirroring the module's coursework (CW1 Analysis, CW2 Design), co-constructing diagrams-as-code (Mermaid) on a live drafting board, one question at a time:
+
+- **Analysis (CW1):** Actors & Goals → Use Cases → Activity → Analysis Class (domain model) → Sequence (use-case realization) → State Machine.
+- **Design (CW2):** Design Class → Design Sequence → Components → Deployment → Testing.
+
+Each phase opens by explaining *why that diagram exists* and what question it answers, then elicits the model from the student — the tutor never does the analysis for them. (Activity, component, and deployment diagrams have no native Mermaid form and are drawn as flowchart approximations; full UML for them is planned via a server-side PlantUML renderer — see `CLAUDE.md`.)
 
 **This build is the instructor testing tool.** It is a single static page, deployable on GitHub Pages, that calls the Anthropic API directly from the browser with the instructor's own API key. It exists to trial the pedagogy against past coursework briefs before any student-facing platform is built. See `CLAUDE.md` for the full product vision and development roadmap.
 
@@ -26,7 +31,7 @@ Any push to `main` redeploys automatically.
 
 ## Testing workflow suggestion
 
-For each past assignment: load the brief → play a *strong* student → export; reset (the brief persists) → play a *weak or lazy* student (short answers, "just do it for me") → export. Comparing the two transcripts against the same brief is the fastest way to find where the tutor's prompts need tightening. The prompts live in `index.html` in the `PHASES` array and `BASE_SYSTEM` constant — edit, push, redeploy, re-run.
+For each past assignment: load the brief → play a *strong* student → export; reset (the brief persists) → play a *weak or lazy* student (short answers, "just do it for me") → export. Comparing the two transcripts against the same brief is the fastest way to find where the tutor's prompts need tightening. The prompts live in `index.html`: the two-stage curriculum in the `STAGES` and `PHASES` arrays (each phase's `instructions` string is its prompt), and the tutor persona in the `BASE_SYSTEM` constant — edit, push, redeploy, re-run.
 
 ## Security notes — read before sharing the URL
 
@@ -37,4 +42,4 @@ For each past assignment: load the brief → play a *strong* student → export;
 
 ## Cost expectations
 
-A full six-phase run is typically 30–80 model calls. With the default model (Sonnet), expect roughly the cost of a coffee per several full runs; the cheaper Haiku option in Settings is fine for quick prompt-iteration loops, and Opus is available when you want to see the ceiling.
+A full two-stage run (eleven phases) is typically 40–120 model calls. With the default model (Sonnet), expect roughly the cost of a coffee per several full runs; the cheaper Haiku option in Settings is fine for quick prompt-iteration loops, and Opus is available when you want to see the ceiling.

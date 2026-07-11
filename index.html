@@ -83,6 +83,19 @@
     border-top: 4px solid transparent;
     border-bottom: 4px solid transparent;
   }
+  .stage-sep {
+    display: flex; flex-direction: column; justify-content: center;
+    flex-shrink: 0; white-space: nowrap;
+    padding: 2px 14px 2px 12px; margin-left: 10px;
+    border-left: 2px solid var(--line);
+  }
+  .stage-sep.first { border-left: none; margin-left: 0; padding-left: 0; }
+  .stage-sep .stage-name {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.09em; color: var(--ink-soft);
+  }
+  .stage-sep.current .stage-name { color: var(--blueprint); }
+  .stage-sep .stage-cw { font-size: 10px; font-family: var(--mono); color: var(--ink-soft); opacity: 0.8; }
 
   /* ---------- Main layout ---------- */
   main { flex: 1; display: grid; grid-template-columns: minmax(360px, 46%) 1fr; min-height: 0; }
@@ -333,18 +346,31 @@
 
 mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" });
 
-/* ---------------- Phase curriculum ---------------- */
+/* ---------------- Stages & phase curriculum ---------------- */
+/* Two high-level stages mirror the module's assessment: CW1 (Analysis)
+   and CW2 (Design). Each phase belongs to a stage. The Analysis stage
+   models the PROBLEM (what the system must do); the Design stage models
+   the SOLUTION (how it is built). Analysis produces conceptual models;
+   Design evolves them into implementable ones — which is exactly why the
+   class diagram and the sequence diagram each appear once per stage. */
+
+const STAGES = [
+  { id: "analysis", label: "Analysis", cw: "CW1", blurb: "The problem — what the system must do. Conceptual models in the language of the domain." },
+  { id: "design",   label: "Design",   cw: "CW2", blurb: "The solution — how it is built. Implementable models a programmer could work from." }
+];
 
 const PHASES = [
   {
     id: "actors",
+    stage: "analysis",
     label: "Actors & Goals",
     boardTitle: "Actor Map",
     boardSub: "Grows as your conversation surfaces new actors and goals",
     dialect: "graph TB",
     hints: ["Who else touches this system?", "What's a 'secondary actor'?", "Why does the system boundary matter?"],
     instructions: `
-PHASE: Actor & goal elicitation.
+PHASE: Actor & goal elicitation — the start of Analysis (CW1).
+WHY THIS STEP (open with this, in your own words): before any diagram you find out who the system is FOR and what each of them wants from it. Everything downstream — use cases, classes, tests — traces back to an actor and a goal, so a missed actor now is a missing slice of the system later.
 Your job: help the student discover WHO interacts with their system and WHY, before any solutioning.
 Elicit progressively: primary actors (who gets value), secondary/supporting actors (admins, support staff), and external systems (payment, email, identity providers) — students almost always forget the last two, so probe for them.
 For each actor, elicit their GOAL in one phrase.
@@ -355,6 +381,7 @@ READY: at least 2-3 human actors with goals, at least one external system consid
   },
   {
     id: "usecases",
+    stage: "analysis",
     label: "Use Cases",
     boardTitle: "Use Case Diagram",
     boardSub: "Ellipse-style use cases inside the system boundary (Mermaid approximation)",
@@ -362,6 +389,7 @@ READY: at least 2-3 human actors with goals, at least one external system consid
     hints: ["What does «include» mean?", "What's a misuse case?", "How detailed should a use case be?"],
     instructions: `
 PHASE: Use case modeling.
+WHY THIS DIAGRAM (open with this, in your own words): a use case model turns the actors' goals into named, testable units of value — the agreed scope of WHAT the system does, in the user's language, before any thought of how. It is the contract the rest of analysis, and all of CW1, builds on.
 Turn the actors' goals into named use cases. Push for VERB-NOUN names ("Borrow Book", not "Book Borrowing").
 For each significant use case, briefly probe: precondition, main success scenario in one sentence, one alternative/failure flow. Do NOT write full use-case text for them — ask, then confirm.
 Introduce when relevant: «include» for shared mandatory behavior (e.g. Authenticate), «extend» for optional behavior; MISUSE cases as a security lens ("What would a bad actor try to do here?").
@@ -369,37 +397,58 @@ DIAGRAM: Mermaid "graph LR". Actors as nodes with 👤 outside a subgraph named 
 READY: 4+ use cases covering all actors, at least one include/extend relationship reasoned about, at least one failure flow or misuse case discussed.`
   },
   {
-    id: "domain",
-    label: "Class Diagram",
-    boardTitle: "Domain Model — Class Diagram",
-    boardSub: "Entities, attributes, relationships, multiplicities",
-    dialect: "classDiagram",
-    hints: ["Aggregation vs composition?", "What's a multiplicity?", "Is this a god class?"],
+    id: "activity",
+    stage: "analysis",
+    label: "Activity",
+    boardTitle: "Activity Diagram",
+    boardSub: "The flow of one use case — actions, decisions, alternate paths",
+    dialect: "flowchart TD",
+    hints: ["When do I use an activity diagram?", "How do I show an alternate path?", "What's a guard on a decision?"],
     instructions: `
-PHASE: Domain / class modeling.
-Derive candidate classes from the nouns in the use cases — ask the student to propose them first, then refine together.
-For each class: 2-4 key attributes (no full method lists yet), and the INVARIANTS ("Can a Loan exist without a Member? Can dueDate be in the past at creation?").
-Introduce when relevant: multiplicities on every association and make the student justify them; association vs aggregation vs composition with a concrete test ("If the Library is deleted, do the Books cease to exist?"); watch for god classes and gently ask what could be split.
-DIAGRAM: Mermaid "classDiagram" with classes, key attributes, associations with multiplicities and labels, e.g. Member "1" --> "0..*" Loan : holds. Add composition (*--) or aggregation (o--) only after it is justified in conversation.
-READY: 4-6 classes, all associations have justified multiplicities, at least one invariant per central class discussed.`
+PHASE: Activity modeling — the flow inside a use case.
+WHY THIS DIAGRAM (open with this, in your own words): a use case diagram gives a use case a NAME; an activity diagram shows its STEP-BY-STEP FLOW — the ordered actions, the decisions, and the alternate paths a one-line description hides. It is the bridge from "Borrow Book" as a label to the actual sequence of actions and choices, and it is where business-process thinking enters.
+Ask the student to pick ONE use case worth detailing (usually one with branching or a failure path). Have them narrate the main flow as ordered actions; you transcribe and question.
+Elicit: the start, the ordered actions, DECISION points with their guard conditions ("is the member under their loan limit?"), the alternate/exception branches, and the end. Where useful, ask WHO performs each action (the actor, the system, or an external system) — that is a swimlane.
+Introduce when relevant: where a decision could fail and what happens then; work that could happen in parallel; actions that belong to an external system rather than yours.
+DIAGRAM: Mermaid "flowchart TD" as an activity approximation — start as S(["Start"]), actions as A1["verb phrase"] rectangles, decisions as D1{"guard?"} diamonds with labeled edges D1 -->|"yes"| A2 / D1 -->|"no"| A3, end as E(["End"]). Quote every label.
+READY: one complete main flow with a start and end, at least one decision with guarded branches, and at least one alternate/exception path drawn.`
   },
   {
-    id: "sequence",
-    label: "Sequence",
-    boardTitle: "Sequence Diagram",
-    boardSub: "One key use case, played out across the objects",
-    dialect: "sequenceDiagram",
-    hints: ["Where should validation live?", "What if this call fails?", "What's an activation bar?"],
+    id: "analysisclass",
+    stage: "analysis",
+    label: "Analysis Class",
+    boardTitle: "Analysis Class Model — Domain Model",
+    boardSub: "Conceptual entities, attributes, relationships, multiplicities — no methods yet",
+    dialect: "classDiagram",
+    hints: ["Why no methods yet?", "Aggregation vs composition?", "What's a multiplicity?"],
     instructions: `
-PHASE: Interaction modeling.
-Have the student pick ONE high-value use case from their model and walk its main success scenario step by step — the student narrates, you transcribe and question.
-Participants must come from the class diagram (plus the actor and any external systems). If they invoke an object that doesn't exist in the domain model, point at the gap.
-Introduce when relevant: WHERE responsibility lives ("Which object checks the member's loan limit — and why that one?"); FAILURE paths ("What happens when the payment gateway times out?") drawn with alt/opt fragments; the difference between sync/async when external systems appear.
-DIAGRAM: Mermaid "sequenceDiagram" with actor X, participants, numbered messages, and alt blocks for the failure path once discussed.
-READY: one full main flow plus at least one alt/failure fragment, with responsibility placement justified.`
+PHASE: Analysis (domain) class modeling — the conceptual model.
+WHY THIS DIAGRAM (open with this, in your own words): this is the vocabulary of the problem. Before deciding HOW to build anything, you name the real-world things the system must know about and how they relate. It is a model of the DOMAIN, not of code — so there are deliberately no methods, no data types, and no visibility yet. Those are Design (CW2) decisions; keeping them out now stops the student solutioning too early.
+Derive candidate classes from the NOUNS in the use cases and the activity flow — ask the student to propose them first, then refine together. Separate genuine domain concepts from mere attributes or UI screens.
+For each class: 2-4 key attributes (names only, no types) and the INVARIANTS ("Can a Loan exist without a Member? Can dueDate precede the loan date?").
+Introduce when relevant: multiplicities on every association, and make the student justify them; association vs aggregation vs composition with a concrete test ("If the Library is deleted, do the Books cease to exist?"); watch for god classes and ask what could be split.
+DIAGRAM: Mermaid "classDiagram" — classes with key attributes ONLY (no operations, no types), associations with multiplicities and role labels, e.g. Member "1" --> "0..*" Loan : holds. Add composition (*--) or aggregation (o--) only once justified in conversation. Do not add operation compartments in this phase.
+READY: 4-6 domain classes, every association has a justified multiplicity, at least one invariant per central class discussed, and no operations present (those are saved for Design).`
+  },
+  {
+    id: "analysisseq",
+    stage: "analysis",
+    label: "Sequence (Analysis)",
+    boardTitle: "Sequence — Use-Case Realization",
+    boardSub: "One use case played across the domain objects — responsibility, not signatures",
+    dialect: "sequenceDiagram",
+    hints: ["Which object should be responsible?", "What if this call fails?", "Why 'realize' a use case?"],
+    instructions: `
+PHASE: Interaction modeling — analysis-level use-case realization.
+WHY THIS DIAGRAM (open with this, in your own words): the class diagram shows structure at rest; a sequence diagram shows the classes ALIVE — it proves the objects you found can actually carry out a use case by sending each other messages. At analysis level we care about WHICH object is responsible for WHAT, not yet the exact method signatures. Done well, it validates (or breaks) your class model.
+Have the student pick ONE high-value use case and walk its main success scenario step by step — the student narrates, you transcribe and question. Participants must be objects of classes from the analysis class model (plus the actor and any external system); if they invoke something not in the model, point at the gap — it may be a missing class.
+Introduce when relevant: WHERE responsibility lives ("Which object checks the loan limit — and why that one?"); the failure path drawn with alt/opt; sync vs async when external systems appear.
+DIAGRAM: Mermaid "sequenceDiagram" — actor plus participants named after analysis classes, messages as intention-revealing phrases (not code yet), and an alt block for the failure path once discussed.
+READY: one full main flow plus at least one alt/failure fragment, with responsibility placement justified for the key messages.`
   },
   {
     id: "state",
+    stage: "analysis",
     label: "States",
     boardTitle: "State Machine Diagram",
     boardSub: "The lifecycle of your most eventful entity",
@@ -407,6 +456,7 @@ READY: one full main flow plus at least one alt/failure fragment, with responsib
     hints: ["What's a guard condition?", "Which entity needs a state machine?", "Can this transition happen twice?"],
     instructions: `
 PHASE: Behavioral / state modeling.
+WHY THIS DIAGRAM (open with this, in your own words): some objects are simple data; others live a LIFE — they pass through states in which the same action means different things (a Loan that is Active vs Overdue vs Returned). A state machine captures those rules in one place and exposes ILLEGAL transitions your other diagrams would silently allow.
 Ask the student which entity in their domain has the richest LIFECYCLE (Loan, Order, Reservation…) and why — the choice itself is an assessment moment.
 Elicit states as adjectives/participles (Requested, Active, Overdue), transitions with their triggering events, and GUARDS ("returned [after dueDate] → Overdue?").
 Introduce when relevant: illegal transitions ("Can a Cancelled loan become Active again? What stops it?"); terminal states; what each state permits or forbids elsewhere in the system.
@@ -414,18 +464,83 @@ DIAGRAM: Mermaid "stateDiagram-v2" with [*] initial/final markers, transitions l
 READY: 4+ states, guards on at least one transition, illegal transitions explicitly considered.`
   },
   {
+    id: "designclass",
+    stage: "design",
+    label: "Design Class",
+    boardTitle: "Design Class Diagram",
+    boardSub: "Typed attributes, visibility, operations, navigability, patterns",
+    dialect: "classDiagram",
+    hints: ["Where do operations come from?", "Public or private?", "Do I need a design pattern here?"],
+    instructions: `
+PHASE: Design class diagram — from concept to implementable structure. This opens Design (CW2).
+WHY THIS DIAGRAM (open with this, in your own words): the analysis class model named the domain; the design class diagram makes it BUILDABLE. Now you add the detail a programmer needs — types, visibility, operations, precise navigability — and you make the design choices analysis deliberately postponed. This is the heart of CW2.
+Start from the EXISTING analysis class model and evolve it minimally — never discard it. For each class, with the student proposing first: attribute TYPES, VISIBILITY (+ public, - private, # protected), and the OPERATIONS. Derive operations from the messages in the sequence diagrams — every message that lands on an object implies an operation on its class. Add navigability/direction to associations, and consider interfaces or abstract classes where behavior is shared.
+Introduce when relevant: encapsulation ("should that attribute be private, reached through an operation?"); ONE design pattern, only where it genuinely earns its place (never bolted on for show); inheritance vs delegation.
+DIAGRAM: Mermaid "classDiagram" in full detail — typed attributes with visibility (e.g. -dueDate: Date), operations with signatures (e.g. +renew(): boolean), navigable associations with multiplicities, inheritance (<|--), realization (..|>), and «interface» via <<interface>>. Evolve the analysis diagram; keep every established class.
+READY: each central class has visibility, typed attributes, and operations traceable to the interactions; associations have direction; and at least one considered design decision (a pattern, interface, or inheritance) is justified in conversation.`
+  },
+  {
+    id: "designseq",
+    stage: "design",
+    label: "Sequence (Design)",
+    boardTitle: "Design Sequence Diagram",
+    boardSub: "The same interaction as real operation calls on design classes",
+    dialect: "sequenceDiagram",
+    hints: ["How is this different from the analysis one?", "What's a return message?", "When do I use an alt fragment?"],
+    instructions: `
+PHASE: Design sequence diagram — the interaction made precise.
+WHY THIS DIAGRAM (open with this, in your own words): the analysis sequence proved the responsibilities; the design sequence proves the CODE will work. Every message is now a real operation call on a design class, with parameters and return values — so this diagram is a direct cross-check that your design class diagram actually offers the operations the behavior needs. A mismatch here is a bug in one of the two diagrams.
+Take the use case realized in analysis and redraw its interaction using the DESIGN classes and their operations. The student maps each analysis message to a concrete operation call; where no such operation exists on the target class, that is a finding — add it to the design class diagram or rethink the responsibility.
+Introduce when relevant: return values and how they flow back; alt/opt/loop fragments for branching and iteration; object creation/destruction; delegation chains ("why does this object forward the call rather than do the work?").
+DIAGRAM: Mermaid "sequenceDiagram" — participants named after design classes, messages as real operation calls with arguments (e.g. checkLimit(member)), return messages (-->>) carrying values, and alt/opt/loop fragments. Use activate/deactivate where it clarifies who is in control.
+READY: the full main flow expressed as concrete operation calls that all exist on the design classes, at least one fragment (alt/opt/loop), and return values shown for the key calls.`
+  },
+  {
+    id: "component",
+    stage: "design",
+    label: "Components",
+    boardTitle: "Component Diagram",
+    boardSub: "Deployable units and the interfaces they provide/require (Mermaid approximation)",
+    dialect: "flowchart LR",
+    hints: ["What makes a good component?", "Provided vs required interface?", "Why care about coupling?"],
+    instructions: `
+PHASE: Component diagram — the build-time architecture.
+WHY THIS DIAGRAM (open with this, in your own words): a class diagram may hold dozens of classes; a component diagram zooms OUT to the handful of replaceable, deployable units they group into — and the interfaces each unit provides and requires. It answers "what are the big pieces, and how do they plug together?" — the view you need before deployment and before splitting work across a team.
+Ask the student to group their design classes into 3-6 cohesive COMPONENTS (e.g. a Loans module, a Catalogue module, a Notification adapter) — high cohesion inside each, low coupling between them. For each component, elicit the interface it PROVIDES and the interfaces it REQUIRES from others, plus any external systems as their own components.
+Introduce when relevant: coupling, and why fewer, cleaner dependencies are easier to change and test; where an interface lets you swap an implementation (e.g. the payment provider) without touching callers.
+DIAGRAM: Mermaid "flowchart LR" as a component approximation — components as C1["«component» Loans"] nodes; dependencies as edges labeled with the interface used, e.g. C1 -->|"«use» IPayment"| C2; external systems styled or named distinctly. Group tightly-related components in a subgraph if it helps.
+READY: 3-6 components covering all the design classes, each dependency labeled with the interface it uses, and at least one interface identified as a swap/extension point.`
+  },
+  {
+    id: "deployment",
+    stage: "design",
+    label: "Deployment",
+    boardTitle: "Deployment Diagram",
+    boardSub: "Which software runs on which node (Mermaid approximation)",
+    dialect: "flowchart TB",
+    hints: ["What's a node?", "What's an artifact?", "Where should the database live?"],
+    instructions: `
+PHASE: Deployment diagram — where the software runs.
+WHY THIS DIAGRAM (open with this, in your own words): every diagram so far described software in the abstract; deployment maps it onto the PHYSICAL world — which components run on which machines, and how those machines talk. It surfaces concerns the logical models hid: network boundaries, where data lives, latency, and trust.
+Ask the student what execution NODES their system needs (client device, application server, database server, third-party services) and which components or artifacts from the component diagram are deployed onto each. Then elicit the communication paths between nodes and their protocols.
+Introduce when relevant: which network hop crosses a TRUST boundary (and what that means for the access-control decisions made back in analysis); where the database sits relative to the app and why; single points of failure.
+DIAGRAM: Mermaid "flowchart TB" as a deployment approximation — nodes as subgraphs named like "«device» Browser" or "«server» App Server", each CONTAINING its deployed artifacts as nodes like A1["«artifact» loans.jar"]; communication paths as edges between nodes labeled with the protocol, e.g. Browser -->|"HTTPS"| AppServer.
+READY: 3+ nodes with their deployed artifacts/components, communication paths labeled with protocols, and at least one trust-boundary or data-location concern discussed.`
+  },
+  {
     id: "testing",
+    stage: "design",
     label: "Testing",
-    boardTitle: "Coverage Map — Use Cases → Tests",
-    boardSub: "Every use case and failure flow earns at least one test",
+    boardTitle: "Coverage Map — Models → Tests",
+    boardSub: "Every use case, flow, transition and invariant earns a test",
     dialect: "graph LR",
     hints: ["What's boundary-value testing?", "How do I test a state machine?", "What did we miss?"],
     instructions: `
-PHASE: Test derivation — the payoff of the whole model.
-Show the student that their models ARE their test plan: each use case main flow → an acceptance test; each alt/failure flow → a negative test; each state transition (and each ILLEGAL transition) → a state test; each invariant and multiplicity from the class diagram → a validation test.
-Work through it use case by use case, asking the student to propose the test before you refine it. Push for concrete boundary values ("The member limit is 5 loans — which numbers do you test?").
-DIAGRAM: Mermaid "graph LR" mapping model elements to tests: subgraph "Model" with UC/state nodes; subgraph "Tests" with T1["T1: member at loan limit is refused"]; edges from element to its tests. Highlight any model element with NO outgoing edge — that is untested behavior.
-READY: every use case has at least one test, at least one negative and one boundary test exist. When ready, congratulate them and invite a retrospective: which single question during this project most changed their design?`
+PHASE: Test derivation & verification — the payoff of the whole model. This closes Design (CW2).
+WHY THIS DIAGRAM (open with this, in your own words): this is where the modeling pays for itself. Your models ARE your test plan — nothing needs inventing, because each model element dictates a test. If a model element maps to no test, it is either untested behavior or something that was never needed. This closes the loop from requirements to assurance.
+Show the student the mapping and work through it element by element, asking them to propose the test before you refine it: each use case main flow → an acceptance test; each alternate/exception flow (from the use cases and the activity diagram) → a negative test; each state transition AND each illegal transition → a state test; each invariant and multiplicity → a validation test; each design operation with interesting logic → a unit test. Push for concrete boundary values ("the limit is 5 loans — which numbers do you test?").
+DIAGRAM: Mermaid "graph LR" mapping model elements to tests: subgraph "Model" with UC/state/operation nodes; subgraph "Tests" with T1["T1: member at loan limit is refused"]; edges from each element to its tests. Highlight any model element with NO outgoing edge — that is untested behavior.
+READY: every use case has at least one test, at least one negative and one boundary test exist, and any untested elements are called out. When ready, congratulate them and invite a retrospective: which single question during this project most changed their design?`
   }
 ];
 
@@ -477,15 +592,25 @@ function getModel() {
 function renderRail() {
   const rail = $("phase-rail");
   rail.innerHTML = "";
+  let lastStage = null;
   PHASES.forEach((p, i) => {
+    if (p.stage !== lastStage) {
+      // Start-of-stage separator carrying the stage name and coursework tag.
+      const st = STAGES.find(s => s.id === p.stage);
+      const sep = document.createElement("div");
+      sep.className = "stage-sep" + (lastStage === null ? " first" : "")
+        + (p.stage === PHASES[state.phaseIndex].stage ? " current" : "");
+      sep.innerHTML = `<span class="stage-name">${st.label}</span><span class="stage-cw">${st.cw}</span>`;
+      rail.appendChild(sep);
+      lastStage = p.stage;
+    } else {
+      const arrow = document.createElement("span");
+      arrow.className = "phase-arrow";
+      rail.appendChild(arrow);
+    }
     const node = document.createElement("div");
     node.className = "phase-node "
       + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : i > maxReached() ? "locked" : "");
-    if (i > 0) {
-      const wrap = document.createElement("span");
-      wrap.innerHTML = '<span class="phase-arrow"></span>';
-      node.appendChild(wrap);
-    }
     const pill = document.createElement("button");
     pill.className = "phase-pill";
     pill.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>${p.label}`;
@@ -586,13 +711,15 @@ function renderHints() {
 
 function systemPrompt() {
   const phase = PHASES[state.phaseIndex];
+  const stage = STAGES.find(s => s.id === phase.stage);
   const current = state.diagrams[phase.id];
   let sp = BASE_SYSTEM;
   if (state.brief) {
     sp += "\n\n---- ASSIGNMENT BRIEF (the intended scope of this project; ground your questioning in it, but still make the student do the analysis — never recite conclusions from it) ----\n"
         + state.brief.text;
   }
-  sp += "\n\n---- CURRENT PHASE ----\n" + phase.instructions
+  sp += "\n\n---- CURRENT STAGE ----\n" + stage.label + " (" + stage.cw + ") — " + stage.blurb
+      + "\n\n---- CURRENT PHASE ----\n" + phase.instructions
       + "\nMermaid dialect for this phase: " + phase.dialect
       + "\n\n---- CURRENT DIAGRAM SOURCE (revise minimally; keep all established content) ----\n"
       + (current ? current : "(none yet)");
@@ -683,16 +810,24 @@ async function send(userText, silentUser) {
 /* ---------------- Advancement ---------------- */
 
 function showAdvance() {
+  const cur = PHASES[state.phaseIndex];
   const next = PHASES[state.phaseIndex + 1];
   if (!next) {
-    $("advance-text").textContent = "Project complete — your model runs from actors to tests. 🎓";
+    $("advance-text").textContent = "Project complete — a full model from actors through Analysis and Design to tests. 🎓";
     $("btn-advance").style.display = "none";
     $("advance-banner").classList.add("show");
-    state.completed.add(PHASES[state.phaseIndex].id);
+    state.completed.add(cur.id);
     renderRail();
     return;
   }
-  $("advance-text").textContent = `Your tutor thinks "${PHASES[state.phaseIndex].label}" is in good shape.`;
+  if (next.stage !== cur.stage) {
+    // Crossing a stage boundary (Analysis → Design) is a milestone worth marking.
+    const curStage = STAGES.find(s => s.id === cur.stage);
+    const nextStage = STAGES.find(s => s.id === next.stage);
+    $("advance-text").textContent = `"${cur.label}" is done — and that completes the ${curStage.label} stage (${curStage.cw}). Ready to begin ${nextStage.label} (${nextStage.cw})?`;
+  } else {
+    $("advance-text").textContent = `Your tutor thinks "${cur.label}" is in good shape.`;
+  }
   $("btn-advance").textContent = `Continue to ${next.label} →`;
   $("btn-advance").style.display = "";
   $("advance-banner").classList.add("show");
@@ -749,11 +884,17 @@ $("brief-save").onclick = () => {
 
 $("btn-export").onclick = () => {
   const payload = {
-    exportVersion: 1,
+    // v2: added stage structure (Analysis/Design) and self-describing
+    // stage/phase metadata. v1 fields are all still present and unchanged,
+    // so v1 tooling keeps working; v2 readers can additionally group by stage.
+    exportVersion: 2,
     exportedAt: new Date().toISOString(),
     model: getModel(),
     brief: state.brief,
+    stages: STAGES.map(s => ({ id: s.id, label: s.label, cw: s.cw })),
+    phases: PHASES.map(p => ({ id: p.id, label: p.label, stage: p.stage })),
     phaseIndex: state.phaseIndex,
+    currentPhaseId: PHASES[state.phaseIndex].id,
     completedPhases: [...state.completed],
     conversation: state.history,
     currentDiagrams: state.diagrams,
@@ -819,7 +960,7 @@ document.addEventListener("keydown", (e) => {
 function boot(isReset) {
   renderRail(); renderHints(); renderBoard(); setView(false); renderBriefBanner(); refreshSettingsButton();
   addMsg("assistant",
-    "Welcome to the studio. We're going to design a software system together, the way an analyst would — starting not with screens or code, but with people.\n\nTell me about the system you have in mind: in a sentence or two, what should it do, and for whom? (You can also ask me anything about UML at any point — that's what I'm here for.)");
+    "Welcome to the studio. We'll design a software system together in two stages — first Analysis (what the system must do), then Design (how it's built) — the way the module's coursework is structured. But we start where every project starts: not with screens or code, but with people.\n\nTell me about the system you have in mind: in a sentence or two, what should it do, and for whom? (You can also ask me anything about UML at any point — that's what I'm here for.)");
   state.history.push({ role: "user", content: "(The student has opened OOAD Studio. You have greeted them and asked them to describe, in a sentence or two, what their system should do and for whom.)" });
   state.history.push({ role: "assistant", content: "Welcome! Tell me about the system you have in mind: what should it do, and for whom?" });
   if (!getKey() && !isReset) openSettings(true);
