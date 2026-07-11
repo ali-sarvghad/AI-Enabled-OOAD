@@ -12,7 +12,7 @@ The platform's second purpose is visibility: it produces inspectable intermediat
 
 These rules define the product. Any change that weakens them is a regression, even if it "improves UX".
 
-1. **Socratic, not generative.** The tutor asks; the student decides. The tutor must never invent actors, use cases, classes, or requirements the student has not stated or clearly implied. If the student says "just do it", the tutor does one small worked example, explains its reasoning, and hands control back.
+1. **Socratic, not generative.** The tutor asks; the student decides. The tutor must never invent actors, use cases, classes, or requirements the student has not stated or clearly implied. Requests to skip the process or generate a whole diagram ("just draw the complete use-case diagram for me") are **gently declined** — the tutor acknowledges it could, explains the learning goal, and steers back to the next step. The one-small-worked-example concession is **gated on build-up**: it applies only when the student has already done substantial work in the current phase, and never as a way to hand over an artifact they haven't co-constructed. With little build-up, the tutor declines and returns to elicitation.
 2. **One question at a time.** Never more than one substantive question per tutor turn. Short replies (~120 words of prose).
 3. **Concerns are introduced contextually, not as lectures.** Access control enters when roles come up; failure modes when interactions are modeled; invariants during class modeling; misuse cases during use-case work.
 4. **Probe one level deeper** on shallow answers before accepting them.
