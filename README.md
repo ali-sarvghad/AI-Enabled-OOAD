@@ -35,6 +35,10 @@ Any push to `main` redeploys automatically.
 
 For each past assignment: load the brief → play a *strong* student → export; reset (the brief persists) → play a *weak or lazy* student (short answers, "just do it for me") → export. Comparing the two transcripts against the same brief is the fastest way to find where the tutor's prompts need tightening. The prompts live in `index.html`: the two-stage curriculum in the `STAGES` and `PHASES` arrays (each phase's `instructions` string is its prompt), and the tutor persona in the `BASE_SYSTEM` constant — edit, push, redeploy, re-run.
 
+### Prompt regression suite
+
+`tests/prompt-regression/` holds an automated, behaviour-focused check on those prompts — canned (often adversarial) student inputs graded against expected tutor *behaviours* (asks one question, declines "just do it for me", cites sources on knowledge answers, signals readiness only when earned…). It reads the prompts straight from `index.html`, so it never drifts. Run `node run.mjs --dry` to validate wiring with no API calls, or set a provider key and run it for real. Run it whenever you change a prompt or default model. See `tests/prompt-regression/README.md`.
+
 ## Security notes — read before sharing the URL
 
 - **Never commit an API key to this repository.** The key belongs in the browser's settings panel only.
