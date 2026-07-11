@@ -165,6 +165,30 @@
     padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans);
   }
   .composer button:disabled { opacity: 0.5; cursor: default; }
+  .composer .btn-attach {
+    background: none; border: 1.5px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; font-size: 17px; line-height: 1; cursor: pointer;
+    color: var(--ink-soft); align-self: stretch; font-weight: 400;
+  }
+  .composer .btn-attach:hover { border-color: var(--blueprint); color: var(--blueprint); }
+  .attach-row { padding: 0 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .attach-row:not(:empty) { padding-bottom: 8px; }
+  .attach-row.modal-attach { padding: 0; margin-top: 8px; }
+  .attach-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-family: var(--mono);
+    background: var(--blueprint-soft); color: var(--blueprint-deep);
+    border: 1px solid var(--blueprint); border-radius: 6px; padding: 3px 8px; max-width: 220px;
+  }
+  .attach-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach-chip .rm { cursor: pointer; border: none; background: none; color: var(--blueprint-deep); font-size: 14px; padding: 0 0 0 2px; line-height: 1; }
+  .attach-chip .rm:hover { color: var(--warn); }
+  .msg .msg-attachments { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .msg .msg-attachments img { max-height: 120px; max-width: 100%; border-radius: 6px; border: 1px solid var(--line); }
+  .msg .msg-attachments .file-tag {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-family: var(--mono);
+    background: rgba(255,255,255,0.6); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+  }
   .hint-row { padding: 0 16px 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   .hint-chip {
     font-size: 12px; border: 1px dashed var(--line); border-radius: 999px;
@@ -272,8 +296,11 @@
       <button id="btn-advance">Continue →</button>
     </div>
     <div class="hint-row" id="hints"></div>
+    <div class="attach-row" id="attach-row"></div>
     <div class="composer">
-      <textarea id="input" rows="2" placeholder="Describe your system, answer the tutor, or ask a UML question…"></textarea>
+      <input type="file" id="file-input" multiple accept="image/*,application/pdf,text/*,.txt,.md,.markdown,.csv,.json" hidden>
+      <button id="btn-attach" class="btn-attach" title="Attach files (text, PDF, or image) for the tutor to see" aria-label="Attach files">📎</button>
+      <textarea id="input" rows="2" placeholder="Describe your system, answer the tutor, ask a UML question, or attach a file…"></textarea>
       <button id="btn-send">Send</button>
     </div>
   </section>
@@ -337,11 +364,14 @@
 <div class="modal-backdrop" id="brief-modal">
   <div class="modal">
     <h2>Assignment brief</h2>
-    <div class="sub">Paste a coursework scenario (e.g., a past CW1 brief). The tutor will ground its questioning in this brief — still Socratic, but aware of the intended scope. Load it before or during a session; clear it to run brief-free.</div>
+    <div class="sub">Paste a coursework scenario, or upload it as a file — text, PDF, or an image (e.g., a scanned brief). The tutor grounds its questioning in the brief while still making the student do the analysis. Load it before or during a session; clear it to run brief-free.</div>
     <label for="brief-title">Short label (appears in exports)</label>
     <input type="text" id="brief-title" placeholder="e.g., CW1 2023 — Library System">
     <label for="brief-text">Brief text</label>
-    <textarea id="brief-text" rows="10" placeholder="Paste the assignment scenario here…"></textarea>
+    <textarea id="brief-text" rows="8" placeholder="Paste the assignment scenario here… (or upload a file below)"></textarea>
+    <label>Or upload brief file(s) — text, PDF, or image</label>
+    <input type="file" id="brief-file" multiple accept="image/*,application/pdf,text/*,.txt,.md,.markdown,.csv,.json">
+    <div class="attach-row modal-attach" id="brief-attach-row"></div>
     <div class="actions">
       <button class="btn-ghost" id="brief-clear">Clear brief</button>
       <button class="btn-ghost" id="brief-cancel">Cancel</button>
@@ -666,20 +696,30 @@ function maxReached() {
 
 /* ---------------- Chat rendering ---------------- */
 
-function addMsg(role, text, diagramUpdated) {
+function addMsg(role, text, diagramUpdated, attachments) {
   const div = document.createElement("div");
   div.className = "msg " + (role === "assistant" ? "tutor" : role === "note" ? "system-note" : "student");
   const who = role === "assistant" ? "Tutor" : "You";
   if (role === "note") {
     div.textContent = text;
   } else {
-    const paragraphs = text.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
-    div.innerHTML = `<div class="who">${who}</div>${paragraphs}` +
+    const atts = attachments && attachments.length ? attachmentPreviewHtml(attachments) : "";
+    const paragraphs = text ? text.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("") : "";
+    div.innerHTML = `<div class="who">${who}</div>${atts}${paragraphs}` +
       (diagramUpdated ? `<span class="diagram-note">↗ drafting board updated</span>` : "");
   }
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
   return div;
+}
+// Small inline previews for a message's attachments (image thumbnail or a file tag).
+function attachmentPreviewHtml(attachments) {
+  const items = attachments.map(a => {
+    if (a.kind === "image") return `<img src="data:${a.mediaType};base64,${a.b64}" alt="${escapeHtml(a.name)}">`;
+    const icon = a.kind === "pdf" ? "📄" : "📎";
+    return `<span class="file-tag">${icon} ${escapeHtml(a.name)}</span>`;
+  }).join("");
+  return `<div class="msg-attachments">${items}</div>`;
 }
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -695,6 +735,73 @@ function setThinking(on) {
     chatEl.scrollTop = chatEl.scrollHeight;
   } else if (!on && t) t.remove();
 }
+
+/* ---------------- Files & attachments ---------------- */
+
+const MAX_FILE_MB = 25;
+const TEXT_EXT = /\.(txt|md|markdown|csv|json|tsv|log|java|py|js|ts|c|cpp|cs|rb|go|rs|php|html|xml|yaml|yml|sql|sh)$/i;
+
+// Turn a File into a normalized attachment the provider adapters understand.
+function readFileAsAttachment(file) {
+  return new Promise((resolve, reject) => {
+    if (file.size > MAX_FILE_MB * 1024 * 1024) { reject(new Error(file.name + " is larger than " + MAX_FILE_MB + " MB")); return; }
+    const mt = file.type || "";
+    const isImage = /^image\//.test(mt);
+    const isPdf = mt === "application/pdf" || /\.pdf$/i.test(file.name);
+    const isText = /^text\//.test(mt) || mt === "application/json" || TEXT_EXT.test(file.name);
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read " + file.name));
+    if (isImage) {
+      reader.onload = () => resolve({ kind: "image", name: file.name, mediaType: mt || "image/png", b64: String(reader.result).split(",")[1] });
+      reader.readAsDataURL(file);
+    } else if (isPdf) {
+      reader.onload = () => resolve({ kind: "pdf", name: file.name, mediaType: "application/pdf", b64: String(reader.result).split(",")[1] });
+      reader.readAsDataURL(file);
+    } else if (isText) {
+      reader.onload = () => resolve({ kind: "text", name: file.name, text: String(reader.result) });
+      reader.readAsText(file);
+    } else {
+      reject(new Error("Unsupported file type for " + file.name + " (use text, PDF, or an image)"));
+    }
+  });
+}
+
+// Render removable chips for a pending attachment list into a row element.
+function renderAttachChips(rowEl, list, onRemove) {
+  rowEl.innerHTML = "";
+  list.forEach((a, i) => {
+    const icon = a.kind === "image" ? "🖼" : a.kind === "pdf" ? "📄" : "📎";
+    const chip = document.createElement("span");
+    chip.className = "attach-chip";
+    chip.innerHTML = `<span>${icon}</span><span class="name">${escapeHtml(a.name)}</span>`;
+    const rm = document.createElement("button");
+    rm.className = "rm"; rm.type = "button"; rm.textContent = "✕"; rm.title = "Remove";
+    rm.onclick = () => onRemove(i);
+    chip.appendChild(rm);
+    rowEl.appendChild(chip);
+  });
+}
+
+// --- Composer attachments ---
+let pendingAttachments = [];
+function renderComposerAttachments() {
+  renderAttachChips($("attach-row"), pendingAttachments, (i) => {
+    pendingAttachments.splice(i, 1);
+    renderComposerAttachments();
+  });
+}
+async function addFilesToPending(fileList, target, rerender) {
+  for (const file of Array.from(fileList)) {
+    try { target.push(await readFileAsAttachment(file)); }
+    catch (e) { addMsg("note", e.message); }
+  }
+  rerender();
+}
+$("btn-attach").onclick = () => $("file-input").click();
+$("file-input").onchange = async (e) => {
+  await addFilesToPending(e.target.files, pendingAttachments, renderComposerAttachments);
+  e.target.value = ""; // allow re-selecting the same file
+};
 
 /* ---------------- Board rendering ---------------- */
 
@@ -768,9 +875,12 @@ function systemPrompt() {
 /* ---------------- Provider adapters ----------------
    Each provider knows how to (a) list its usable chat models given a key,
    and (b) run one tutor turn: (system, history) -> assistant text.
-   history is [{role:'user'|'assistant', content:string}]. All calls are
-   made directly from the browser — an instructor-testing exception; the
-   production platform proxies every provider server-side (see CLAUDE.md). */
+   history is [{role, content:string, attachments?:[att]}]. An attachment is
+   { kind:'image'|'pdf'|'text', name, mediaType, b64?, text? }. Each adapter
+   translates attachments into that provider's multimodal message format so
+   the model can actually "see" uploaded files. All calls are made directly
+   from the browser — an instructor-testing exception; the production
+   platform proxies every provider server-side (see CLAUDE.md). */
 
 const MAX_TOKENS = 1600;
 
@@ -778,6 +888,47 @@ async function providerError(response) {
   const e = await response.json().catch(() => ({}));
   const msg = e && e.error && (e.error.message || (typeof e.error === "string" ? e.error : e.error.status));
   return new Error(msg || ("HTTP " + response.status));
+}
+
+// --- Per-provider content builders (multimodal) ---
+// A user turn with no attachments stays a plain string for maximum
+// compatibility; only turns carrying files become structured content.
+
+function anthropicContent(item) {
+  const atts = item.attachments || [];
+  if (!atts.length) return item.content;
+  const parts = [];
+  if (item.content) parts.push({ type: "text", text: item.content });
+  for (const a of atts) {
+    if (a.kind === "image") parts.push({ type: "image", source: { type: "base64", media_type: a.mediaType, data: a.b64 } });
+    else if (a.kind === "pdf") parts.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.b64 }, title: a.name });
+    else if (a.kind === "text") parts.push({ type: "text", text: "[Attached file: " + a.name + "]\n" + a.text });
+  }
+  return parts;
+}
+
+function openaiContent(item) {
+  const atts = item.attachments || [];
+  if (!atts.length) return item.content;
+  const parts = [];
+  if (item.content) parts.push({ type: "text", text: item.content });
+  for (const a of atts) {
+    if (a.kind === "image") parts.push({ type: "image_url", image_url: { url: "data:" + a.mediaType + ";base64," + a.b64 } });
+    else if (a.kind === "pdf") parts.push({ type: "file", file: { filename: a.name, file_data: "data:application/pdf;base64," + a.b64 } });
+    else if (a.kind === "text") parts.push({ type: "text", text: "[Attached file: " + a.name + "]\n" + a.text });
+  }
+  return parts;
+}
+
+function geminiParts(item) {
+  const parts = [];
+  if (item.content) parts.push({ text: item.content });
+  for (const a of item.attachments || []) {
+    if (a.kind === "image" || a.kind === "pdf") parts.push({ inlineData: { mimeType: a.mediaType, data: a.b64 } });
+    else if (a.kind === "text") parts.push({ text: "[Attached file: " + a.name + "]\n" + a.text });
+  }
+  if (!parts.length) parts.push({ text: "" });
+  return parts;
 }
 
 const PROVIDERS = {
@@ -799,7 +950,10 @@ const PROVIDERS = {
           "Content-Type": "application/json", "x-api-key": key,
           "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"
         },
-        body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages: history })
+        body: JSON.stringify({
+          model, max_tokens: MAX_TOKENS, system,
+          messages: history.map(m => ({ role: m.role, content: m.role === "assistant" ? m.content : anthropicContent(m) }))
+        })
       });
       if (!r.ok) throw await providerError(r);
       const d = await r.json();
@@ -821,7 +975,9 @@ const PROVIDERS = {
         .map(id => ({ id, label: id }));
     },
     async chat(key, model, system, history) {
-      const messages = [{ role: "system", content: system }].concat(history);
+      const messages = [{ role: "system", content: system }].concat(
+        history.map(m => ({ role: m.role, content: m.role === "assistant" ? m.content : openaiContent(m) }))
+      );
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
@@ -846,7 +1002,7 @@ const PROVIDERS = {
     },
     async chat(key, model, system, history) {
       // Gemini roles are 'user' and 'model'; the system prompt is a separate field.
-      const contents = history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+      const contents = history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: m.role === "assistant" ? [{ text: m.content }] : geminiParts(m) }));
       const body = { systemInstruction: { parts: [{ text: system }] }, contents, generationConfig: { maxOutputTokens: MAX_TOKENS } };
       const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key), {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
@@ -888,13 +1044,16 @@ function processReply(raw) {
   return { text, diagramUpdated, ready };
 }
 
-async function send(userText, silentUser) {
+async function send(userText, silentUser, attachments) {
   if (state.busy) return;
   if (!getKey()) { openSettings(true); return; }
+  const atts = attachments && attachments.length ? attachments : null;
   state.busy = true;
   $("btn-send").disabled = true;
-  const userBubble = silentUser ? null : addMsg("user", userText);
-  state.history.push({ role: "user", content: userText });
+  const userBubble = silentUser ? null : addMsg("user", userText, false, atts);
+  const item = { role: "user", content: userText };
+  if (atts) item.attachments = atts;
+  state.history.push(item);
   setThinking(true);
   try {
     const raw = await callTutor();
@@ -908,11 +1067,12 @@ async function send(userText, silentUser) {
     setThinking(false);
     state.history.pop(); // keep history consistent on failure
     // Roll the failed turn back out of the transcript too, so the chat
-    // matches state.history, and give the student their words back so
-    // nothing they wrote is lost — they can edit and resend.
+    // matches state.history, and give the student their words (and files)
+    // back so nothing they entered is lost — they can edit and resend.
     if (userBubble) {
       userBubble.remove();
       if (!inputEl.value.trim()) inputEl.value = userText;
+      if (atts && !pendingAttachments.length) { pendingAttachments = atts.slice(); renderComposerAttachments(); }
     }
     if (e.message === "NO_KEY") openSettings(true);
     else addMsg("note", "API error: " + e.message + " — check your key and account credit in Settings, then resend.");
@@ -967,51 +1127,119 @@ function switchPhase(index, isRevisit) {
 function renderBriefBanner() {
   const b = $("brief-banner");
   if (state.brief) {
-    b.textContent = "Working against brief: " + (state.brief.title || "untitled");
+    const n = (state.brief.attachments || []).length;
+    b.textContent = "Working against brief: " + (state.brief.title || "untitled") + (n ? " (+" + n + " file" + (n > 1 ? "s" : "") + ")" : "");
     b.classList.add("show");
   } else {
     b.classList.remove("show");
   }
 }
+
+// Brief PDF/image files can't live in the system prompt (which is plain
+// text), so they're attached to a synthetic context turn the model reads.
+// Re-seeded on save and on boot so a persisted brief survives "New project".
+function seedBriefContextTurn() {
+  state.history = state.history.filter(m => !m._brief);
+  const b = state.brief;
+  if (!b || !b.attachments || !b.attachments.length) return;
+  state.history.push({
+    role: "user", _brief: true, attachments: b.attachments,
+    content: "(Reference document(s) for the assignment brief" + (b.title ? ' — "' + b.title + '"' : "") + " are attached. Treat them as the intended project scope: ground your questions in them, but never recite them to the student.)"
+  });
+  state.history.push({ role: "assistant", _brief: true, content: "Understood — I have the brief document" + (b.attachments.length > 1 ? "s" : "") + " in view and will keep the project within that scope." });
+}
+
+let briefPendingAttachments = [];
+function renderBriefAttachments() {
+  renderAttachChips($("brief-attach-row"), briefPendingAttachments, (i) => {
+    briefPendingAttachments.splice(i, 1);
+    renderBriefAttachments();
+  });
+}
+
 $("btn-brief").onclick = () => {
   $("brief-title").value = state.brief ? state.brief.title : "";
   $("brief-text").value = state.brief ? state.brief.text : "";
+  briefPendingAttachments = state.brief && state.brief.attachments ? state.brief.attachments.slice() : [];
+  renderBriefAttachments();
   $("brief-modal").classList.add("show");
+};
+$("brief-file").onchange = async (e) => {
+  for (const file of Array.from(e.target.files)) {
+    try {
+      const att = await readFileAsAttachment(file);
+      if (att.kind === "text") {
+        // Fold text files straight into the brief text (they belong in the system prompt).
+        const cur = $("brief-text").value.trim();
+        $("brief-text").value = (cur ? cur + "\n\n" : "") + "----- " + att.name + " -----\n" + att.text;
+      } else {
+        briefPendingAttachments.push(att);
+      }
+    } catch (err) { addMsg("note", err.message); }
+  }
+  renderBriefAttachments();
+  e.target.value = "";
 };
 $("brief-cancel").onclick = () => $("brief-modal").classList.remove("show");
 $("brief-clear").onclick = () => {
   state.brief = null;
+  briefPendingAttachments = [];
+  seedBriefContextTurn();
   renderBriefBanner();
   $("brief-modal").classList.remove("show");
   addMsg("note", "Assignment brief cleared — tutor is now running brief-free.");
 };
 $("brief-save").onclick = () => {
   const text = $("brief-text").value.trim();
-  if (!text) { $("brief-modal").classList.remove("show"); return; }
-  state.brief = { title: $("brief-title").value.trim() || "untitled brief", text };
+  const attachments = briefPendingAttachments.slice();
+  if (!text && !attachments.length) { $("brief-modal").classList.remove("show"); return; }
+  state.brief = { title: $("brief-title").value.trim() || "untitled brief", text, attachments };
+  seedBriefContextTurn();
   renderBriefBanner();
   $("brief-modal").classList.remove("show");
-  addMsg("note", "Assignment brief loaded: " + state.brief.title + " — the tutor will ground its questions in it from the next message.");
+  const fileNote = attachments.length ? " (" + attachments.length + " file" + (attachments.length > 1 ? "s" : "") + " attached for the tutor to see)" : "";
+  addMsg("note", "Assignment brief loaded: " + state.brief.title + fileNote + " — the tutor will ground its questions in it from the next message.");
 };
 
 /* ---------------- Export ---------------- */
 
+// Keep exports readable: replace binary attachment payloads (image/PDF
+// base64) with metadata; text-file contents are small and kept.
+function slimAttachment(a) {
+  if (a.kind === "text") return { kind: a.kind, name: a.name, text: a.text };
+  return { kind: a.kind, name: a.name, mediaType: a.mediaType, dataOmitted: true };
+}
+function slimHistory(hist) {
+  return hist.map(m => {
+    const o = { role: m.role, content: m.content };
+    if (m.attachments) o.attachments = m.attachments.map(slimAttachment);
+    return o;
+  });
+}
+function slimBrief(b) {
+  if (!b) return b;
+  const o = { title: b.title, text: b.text };
+  if (b.attachments && b.attachments.length) o.attachments = b.attachments.map(slimAttachment);
+  return o;
+}
+
 $("btn-export").onclick = () => {
   const payload = {
-    // v2: added stage structure (Analysis/Design) and self-describing
-    // stage/phase metadata. v1 fields are all still present and unchanged,
-    // so v1 tooling keeps working; v2 readers can additionally group by stage.
+    // v2: added stage structure (Analysis/Design), self-describing
+    // stage/phase metadata, provider, and (metadata-only) file attachments.
+    // v1 fields are all still present and unchanged, so v1 tooling keeps
+    // working; v2 readers can additionally group by stage.
     exportVersion: 2,
     exportedAt: new Date().toISOString(),
     provider: getProvider(),
     model: getModel(),
-    brief: state.brief,
+    brief: slimBrief(state.brief),
     stages: STAGES.map(s => ({ id: s.id, label: s.label, cw: s.cw })),
     phases: PHASES.map(p => ({ id: p.id, label: p.label, stage: p.stage })),
     phaseIndex: state.phaseIndex,
     currentPhaseId: PHASES[state.phaseIndex].id,
     completedPhases: [...state.completed],
-    conversation: state.history,
+    conversation: slimHistory(state.history),
     currentDiagrams: state.diagrams,
     diagramRevisionHistory: state.diagramHistory
   };
@@ -1121,9 +1349,12 @@ $("btn-reset").onclick = () => {
 
 $("btn-send").onclick = () => {
   const v = inputEl.value.trim();
-  if (!v) return;
+  if (!v && !pendingAttachments.length) return;   // allow files-only turns
+  const atts = pendingAttachments;
   inputEl.value = "";
-  send(v, false);
+  pendingAttachments = [];
+  renderComposerAttachments();
+  send(v, false, atts);
 };
 inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("btn-send").click(); }
@@ -1140,6 +1371,9 @@ function boot(isReset) {
     "Welcome to the studio. We'll design a software system together in two stages — first Analysis (what the system must do), then Design (how it's built) — the way the module's coursework is structured. But we start where every project starts: not with screens or code, but with people.\n\nTell me about the system you have in mind: in a sentence or two, what should it do, and for whom? (You can also ask me anything about UML at any point — that's what I'm here for.)");
   state.history.push({ role: "user", content: "(The student has opened OOAD Studio. You have greeted them and asked them to describe, in a sentence or two, what their system should do and for whom.)" });
   state.history.push({ role: "assistant", content: "Welcome! Tell me about the system you have in mind: what should it do, and for whom?" });
+  seedBriefContextTurn(); // re-attach any brief document(s) so a persisted brief survives "New project"
+  pendingAttachments = [];
+  renderComposerAttachments();
   if (!getKey() && !isReset) openSettings(true);
 }
 
