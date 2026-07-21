@@ -44,7 +44,7 @@
   .masthead h1 span { color: var(--blueprint); }
   .masthead .tag { font-size: 12px; color: var(--ink-soft); }
   .masthead .spacer { flex: 1; }
-  .masthead button {
+  .masthead .menu-btn {
     font-size: 12px;
     background: none;
     border: 1px solid var(--line);
@@ -54,8 +54,26 @@
     color: var(--ink-soft);
     font-family: var(--sans);
   }
-  .masthead button:hover { border-color: var(--blueprint); color: var(--blueprint); }
-  .masthead button.needs-setup { border-color: var(--warn); color: var(--warn); }
+  .masthead .menu-btn:hover, .masthead .menu-btn.open { border-color: var(--blueprint); color: var(--blueprint); }
+  .masthead .menu-btn.needs-setup { border-color: var(--warn); color: var(--warn); }
+
+  /* ---------- Top menu (dropdown) ---------- */
+  .menu-wrap { position: relative; }
+  .menu-pop {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 60;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(28,39,51,0.18); padding: 6px; min-width: 214px;
+    display: none; flex-direction: column;
+  }
+  .menu-pop.show { display: flex; }
+  .menu-pop button {
+    text-align: left; background: none; border: none; border-radius: 6px;
+    padding: 9px 12px; font-size: 13.5px; cursor: pointer; color: var(--ink);
+    font-family: var(--sans); width: 100%;
+  }
+  .menu-pop button:hover { background: var(--blueprint-soft); color: var(--blueprint-deep); }
+  .menu-pop button.needs-setup { color: var(--warn); }
+  .menu-sep { height: 1px; background: var(--line); margin: 5px 6px; }
 
   .phase-rail { display: flex; align-items: center; padding: 12px 0 14px; overflow-x: auto; }
   .phase-node { display: flex; align-items: center; flex-shrink: 0; }
@@ -332,6 +350,66 @@
   }
   .btn-primary { background: var(--blueprint); color: #fff; border: none; font-weight: 600; }
   .btn-ghost { background: none; border: 1px solid var(--line); color: var(--ink-soft); }
+
+  /* ---------- Panel headers & collapse ---------- */
+  .panel-head {
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  .panel-head .title { font-weight: 700; font-size: 14px; }
+  .panel-head .spacer { flex: 1; }
+  .icon-btn {
+    background: none; border: 1px solid var(--line); border-radius: 6px;
+    width: 28px; height: 28px; cursor: pointer; color: var(--ink-soft);
+    font-size: 14px; line-height: 1; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center; font-family: var(--sans);
+  }
+  .icon-btn:hover { border-color: var(--blueprint); color: var(--blueprint); }
+  .panel-rail {
+    display: none; flex-direction: column; align-items: center; gap: 14px;
+    padding: 12px 0; background: var(--panel); cursor: pointer; height: 100%;
+  }
+  .panel-rail:hover { background: var(--blueprint-soft); }
+  .panel-rail .rail-label {
+    writing-mode: vertical-rl; transform: rotate(180deg);
+    font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  .chat-panel.collapsed { border-right: 1px solid var(--line); }
+  .chat-panel.collapsed > *:not(.panel-rail),
+  .board.collapsed > *:not(.panel-rail) { display: none !important; }
+  .chat-panel.collapsed > .panel-rail,
+  .board.collapsed > .panel-rail { display: flex; }
+  main.chat-collapsed { grid-template-columns: 46px 1fr; }
+  main.board-collapsed { grid-template-columns: 1fr 46px; }
+  @media (max-width: 900px) {
+    main.chat-collapsed { grid-template-columns: 1fr; grid-template-rows: 46px 1fr; }
+    main.board-collapsed { grid-template-columns: 1fr; grid-template-rows: 1fr 46px; }
+    .panel-rail { flex-direction: row; height: auto; width: 100%; padding: 0 14px; justify-content: flex-start; }
+    .panel-rail .rail-label { writing-mode: horizontal-tb; transform: none; }
+  }
+
+  /* ---------- Zoom / pan controls ---------- */
+  #diagram-host { overflow: hidden; position: relative; }
+  #diagram-host.can-pan { cursor: grab; }
+  #diagram-host.dragging { cursor: grabbing; }
+  #diagram-zoom { transform-origin: center center; }
+  .zoom-controls {
+    position: absolute; right: 14px; bottom: 14px; z-index: 6;
+    display: none; flex-direction: column; gap: 6px; align-items: stretch;
+  }
+  .zoom-controls.show { display: flex; }
+  .zoom-controls button {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(28,39,51,0.12); font-family: var(--sans);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .zoom-controls button:hover { border-color: var(--blueprint); color: var(--blueprint); }
+  .zoom-controls .zoom-level {
+    font-size: 10.5px; font-family: var(--mono); color: var(--ink-soft);
+    box-shadow: none; border: none; background: none; height: auto; cursor: default;
+  }
+  .zoom-controls .zoom-level:hover { color: var(--ink-soft); }
 </style>
 </head>
 <body>
@@ -341,16 +419,33 @@
     <h1>OOAD <span>Studio</span></h1>
     <div class="tag">research prototype — instructor testing build</div>
     <div class="spacer"></div>
-    <button id="btn-brief">Assignment brief</button>
-    <button id="btn-export">Export session</button>
-    <button id="btn-reset">New project</button>
-    <button id="btn-settings">⚙ Settings</button>
+    <div class="menu-wrap">
+      <button id="btn-menu" class="menu-btn" aria-haspopup="true" aria-expanded="false">☰ Menu ▾</button>
+      <div class="menu-pop" id="menu-pop" role="menu">
+        <button id="btn-reset" role="menuitem">New session</button>
+        <button id="btn-import" role="menuitem">Import session…</button>
+        <button id="btn-export" role="menuitem">Export session</button>
+        <div class="menu-sep"></div>
+        <button id="btn-brief" role="menuitem">Assignment brief…</button>
+        <button id="btn-settings" role="menuitem">⚙ Settings</button>
+      </div>
+    </div>
+    <input type="file" id="import-input" accept="application/json,.json" hidden>
   </div>
   <div class="phase-rail" id="phase-rail"></div>
 </header>
 
 <main>
-  <section class="chat-panel">
+  <section class="chat-panel" id="chat-panel">
+    <div class="panel-rail" id="chat-rail" title="Expand conversation">
+      <button class="icon-btn" id="chat-expand" aria-label="Expand conversation">⟩</button>
+      <span class="rail-label">Tutor conversation</span>
+    </div>
+    <div class="panel-head">
+      <div class="title">Tutor conversation</div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="chat-collapse" title="Collapse conversation" aria-label="Collapse conversation">⟨</button>
+    </div>
     <div class="brief-banner" id="brief-banner"></div>
     <div class="chat-scroll" id="chat"></div>
     <div class="advance-banner" id="advance-banner">
@@ -367,7 +462,11 @@
     </div>
   </section>
 
-  <section class="board">
+  <section class="board" id="board">
+    <div class="panel-rail" id="board-rail" title="Expand drafting board">
+      <button class="icon-btn" id="board-expand" aria-label="Expand drafting board">⟨</button>
+      <span class="rail-label">Drafting board</span>
+    </div>
     <div class="board-head">
       <div>
         <div class="title" id="board-title">Actor Map</div>
@@ -379,6 +478,7 @@
         <button id="tab-source">Source</button>
         <button id="tab-brief">Brief</button>
       </div>
+      <button class="icon-btn" id="board-collapse" title="Collapse drafting board" aria-label="Collapse drafting board" style="margin-left:2px">⟩</button>
     </div>
     <div class="brief-toolbar" id="brief-toolbar">
       <input type="search" id="brief-search" placeholder="Search the brief…" autocomplete="off">
@@ -392,14 +492,22 @@
     <div class="board-body">
       <div id="render-error-slot"></div>
       <div id="diagram-host">
-        <div class="board-empty">
-          <span class="glyph">⟨⟨ boundary ⟩⟩</span>
-          Nothing on the drafting board yet.<br>
-          Tell your tutor about the system you have in mind — the first sketch appears here as soon as there is something worth drawing.
+        <div id="diagram-zoom">
+          <div class="board-empty">
+            <span class="glyph">⟨⟨ boundary ⟩⟩</span>
+            Nothing on the drafting board yet.<br>
+            Tell your tutor about the system you have in mind — the first sketch appears here as soon as there is something worth drawing.
+          </div>
         </div>
       </div>
       <pre id="source-view"></pre>
       <div id="brief-reader"></div>
+      <div class="zoom-controls" id="zoom-controls">
+        <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+        <span class="zoom-level" id="zoom-level">100%</span>
+        <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+        <button id="zoom-reset" title="Reset view" aria-label="Reset view">⟳</button>
+      </div>
     </div>
   </section>
 </main>
@@ -992,23 +1100,25 @@ async function renderBoard() {
     $("board-sub").textContent = phase.boardSub;
   }
   const src = state.diagrams[phase.id];
-  const host = $("diagram-host");
+  const zoomLayer = $("diagram-zoom");
   const errSlot = $("render-error-slot");
   errSlot.innerHTML = "";
   $("source-view").textContent = src || "(no diagram source yet)";
 
   if (!src) {
-    host.innerHTML = `<div class="board-empty"><span class="glyph">⟨⟨ ${phase.label.toLowerCase()} ⟩⟩</span>Nothing on the drafting board for this phase yet — it appears as your conversation produces model content.</div>`;
+    zoomLayer.innerHTML = `<div class="board-empty"><span class="glyph">⟨⟨ ${phase.label.toLowerCase()} ⟩⟩</span>Nothing on the drafting board for this phase yet — it appears as your conversation produces model content.</div>`;
+    updateZoomUI();
     return;
   }
   try {
     const id = "mmd" + (++renderSeq);
     const { svg } = await mermaid.render(id, src);
-    host.innerHTML = svg;
+    zoomLayer.innerHTML = svg;
   } catch (e) {
     errSlot.innerHTML = `<div class="render-error">The tutor produced diagram source that didn't parse. The source is under the "Source" tab; ask the tutor to fix it. (The production build validates and retries server-side before you ever see this.)</div>`;
-    host.innerHTML = "";
+    zoomLayer.innerHTML = "";
   }
+  updateZoomUI();
 }
 
 $("tab-diagram").onclick = () => setView("diagram");
@@ -1036,6 +1146,7 @@ function setView(mode) {
     $("board-title").textContent = ph.boardTitle;
     $("board-sub").textContent = ph.boardSub;
   }
+  updateZoomUI();
 }
 
 /* ---------------- Brief reader (read / search / highlight) ---------------- */
@@ -1436,6 +1547,7 @@ $("btn-advance").onclick = () => {
 
 function switchPhase(index, isRevisit) {
   state.phaseIndex = index;
+  resetZoom();
   renderRail(); renderHints(); renderBoard(); setView(false);
   const phase = PHASES[index];
   if (!isRevisit || !state.diagrams[phase.id]) {
@@ -1662,14 +1774,16 @@ $("set-save").onclick = () => {
   refreshSettingsButton();
 };
 function refreshSettingsButton() {
-  $("btn-settings").classList.toggle("needs-setup", !getKey());
-  $("btn-settings").textContent = getKey() ? "⚙ Settings" : "⚙ Add API key";
+  const missing = !getKey();
+  $("btn-settings").classList.toggle("needs-setup", missing);
+  $("btn-settings").textContent = missing ? "⚙ Add API key" : "⚙ Settings";
+  $("btn-menu").classList.toggle("needs-setup", missing);
 }
 
 /* ---------------- Reset & boot ---------------- */
 
 $("btn-reset").onclick = () => {
-  if (!confirm("Start a new project? The current conversation and diagrams will be cleared. Export first if you want to keep this run.")) return;
+  if (!confirm("Start a new session? The current conversation and diagrams will be cleared. Export first if you want to keep this run.")) return;
   const brief = state.brief; // keep the loaded brief across resets — useful when re-running the same assignment
   const briefHighlights = state.briefHighlights; // keep the student's brief annotations too
   state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief, briefHighlights, briefSearch: "" };
@@ -1694,7 +1808,206 @@ inputEl.addEventListener("keydown", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   document.querySelectorAll(".modal-backdrop.show").forEach(m => m.classList.remove("show"));
+  closeMenu();
 });
+
+/* ---------------- Drafting board: zoom & pan ---------------- */
+/* The rendered SVG lives inside #diagram-zoom, which we translate/scale.
+   #diagram-host is the clipping viewport. Zoom is per-view; it resets when
+   the phase changes (switchPhase) but persists across in-phase diagram
+   revisions so the student doesn't lose their vantage point mid-conversation. */
+let zoom = { s: 1, x: 0, y: 0 };
+const clampZoom = (v) => Math.min(6, Math.max(0.25, v));
+function applyZoom() {
+  const z = $("diagram-zoom");
+  if (z) z.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+  const lv = $("zoom-level"); if (lv) lv.textContent = Math.round(zoom.s * 100) + "%";
+}
+function resetZoom() { zoom = { s: 1, x: 0, y: 0 }; applyZoom(); }
+function zoomStep(factor) { zoom.s = clampZoom(zoom.s * factor); applyZoom(); }
+function diagramPresent() { return !!state.diagrams[PHASES[state.phaseIndex].id]; }
+function updateZoomUI() {
+  const active = boardView === "diagram" && diagramPresent();
+  $("zoom-controls").classList.toggle("show", active);
+  $("diagram-host").classList.toggle("can-pan", active);
+  applyZoom();
+}
+(function initZoomPan() {
+  const host = $("diagram-host");
+  $("zoom-in").onclick = () => zoomStep(1.2);
+  $("zoom-out").onclick = () => zoomStep(1 / 1.2);
+  $("zoom-reset").onclick = () => resetZoom();
+  host.addEventListener("wheel", (e) => {
+    if (boardView !== "diagram" || !diagramPresent()) return;
+    e.preventDefault();
+    zoomStep(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+  }, { passive: false });
+  let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  host.addEventListener("pointerdown", (e) => {
+    if (boardView !== "diagram" || !diagramPresent()) return;
+    dragging = true; sx = e.clientX; sy = e.clientY; ox = zoom.x; oy = zoom.y;
+    host.classList.add("dragging");
+    try { host.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  host.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    zoom.x = ox + (e.clientX - sx); zoom.y = oy + (e.clientY - sy); applyZoom();
+  });
+  const endDrag = (e) => {
+    if (!dragging) return;
+    dragging = false; host.classList.remove("dragging");
+    try { host.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  host.addEventListener("pointerup", endDrag);
+  host.addEventListener("pointercancel", endDrag);
+})();
+
+/* ---------------- Collapsible panels ---------------- */
+/* Either the conversation or the drafting board can be collapsed to a thin
+   rail so the other fills the width. Only one collapses at a time. */
+function setCollapsed(which, on) {
+  const mainEl = document.querySelector("main");
+  const chat = $("chat-panel"), board = $("board");
+  if (which === "chat") {
+    if (on) { board.classList.remove("collapsed"); mainEl.classList.remove("board-collapsed"); }
+    chat.classList.toggle("collapsed", on);
+    mainEl.classList.toggle("chat-collapsed", on);
+  } else {
+    if (on) { chat.classList.remove("collapsed"); mainEl.classList.remove("chat-collapsed"); }
+    board.classList.toggle("collapsed", on);
+    mainEl.classList.toggle("board-collapsed", on);
+  }
+  if (which === "board" && !on) updateZoomUI();
+}
+$("chat-collapse").onclick = () => setCollapsed("chat", true);
+$("chat-rail").onclick = () => setCollapsed("chat", false);
+$("board-collapse").onclick = () => setCollapsed("board", true);
+$("board-rail").onclick = () => setCollapsed("board", false);
+
+/* ---------------- Top menu ---------------- */
+const menuPop = $("menu-pop"), menuBtn = $("btn-menu");
+function closeMenu() {
+  menuPop.classList.remove("show");
+  menuBtn.classList.remove("open");
+  menuBtn.setAttribute("aria-expanded", "false");
+}
+menuBtn.onclick = (e) => {
+  e.stopPropagation();
+  const open = !menuPop.classList.contains("show");
+  menuPop.classList.toggle("show", open);
+  menuBtn.classList.toggle("open", open);
+  menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+};
+menuPop.addEventListener("click", () => closeMenu());   // any item selection closes the menu
+document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
+
+/* ---------------- Import session ---------------- */
+/* Rebuilds a session from the JSON produced by "Export session". Binary
+   attachments (image/PDF) are metadata-only in the export, so they can't be
+   restored; text, diagrams, brief text, highlights and the full transcript
+   all come back, and the student resumes at the exported phase. */
+$("btn-import").onclick = () => $("import-input").click();
+$("import-input").onchange = (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";   // allow re-importing the same file
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try { importSession(JSON.parse(String(reader.result))); }
+    catch (err) { addMsg("note", "Could not import session: " + err.message); }
+  };
+  reader.onerror = () => addMsg("note", "Could not read that file.");
+  reader.readAsText(file);
+};
+
+// Has the student produced anything worth warning about before we replace it?
+function hasRealWork() {
+  return Object.keys(state.diagrams).length > 0
+    || state.history.some(m => m.role === "user" && !m._brief && !/^\s*\(.*\)\s*$/.test(m.content || ""));
+}
+// Keep only attachments whose payload survived export (text, or binary with data).
+function reviveAttachments(atts) {
+  if (!Array.isArray(atts)) return undefined;
+  const kept = atts.filter(a => a && (a.kind === "text" ? typeof a.text === "string" : !!a.b64));
+  return kept.length ? kept : undefined;
+}
+function countOmittedAttachments(data) {
+  let n = 0;
+  const scan = (atts) => Array.isArray(atts) && atts.forEach(a => { if (a && a.dataOmitted) n++; });
+  (data.conversation || []).forEach(m => scan(m.attachments));
+  if (data.brief) scan(data.brief.attachments);
+  return n;
+}
+
+function importSession(data) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.conversation)) {
+    throw new Error("this doesn't look like an OOAD Studio export.");
+  }
+  if (hasRealWork() &&
+      !confirm("Import this session? It will replace the current conversation and diagrams. Export first if you want to keep this run.")) return;
+
+  // Resolve the phase to resume at (explicit index preferred, id as fallback).
+  let idx = 0;
+  if (Number.isInteger(data.phaseIndex) && data.phaseIndex >= 0 && data.phaseIndex < PHASES.length) idx = data.phaseIndex;
+  else if (data.currentPhaseId) { const i = PHASES.findIndex(p => p.id === data.currentPhaseId); if (i >= 0) idx = i; }
+
+  let brief = null;
+  if (data.brief && (data.brief.text || (Array.isArray(data.brief.attachments) && data.brief.attachments.length))) {
+    brief = {
+      title: data.brief.title || "untitled brief",
+      text: data.brief.text || "",
+      attachments: reviveAttachments(data.brief.attachments) || []
+    };
+  }
+
+  const history = data.conversation.map(m => {
+    const o = { role: m.role === "assistant" ? "assistant" : "user", content: typeof m.content === "string" ? m.content : "" };
+    const atts = reviveAttachments(m.attachments);
+    if (atts) o.attachments = atts;
+    return o;
+  });
+
+  state = {
+    phaseIndex: idx,
+    history,
+    diagrams: (data.currentDiagrams && typeof data.currentDiagrams === "object") ? { ...data.currentDiagrams } : {},
+    diagramHistory: Array.isArray(data.diagramRevisionHistory) ? data.diagramRevisionHistory.slice() : [],
+    completed: new Set((data.completedPhases || []).filter(id => PHASES.some(p => p.id === id))),
+    busy: false,
+    brief,
+    briefHighlights: Array.isArray(data.briefHighlights) ? data.briefHighlights.slice() : [],
+    briefSearch: ""
+  };
+
+  $("advance-banner").classList.remove("show");
+  resetZoom();
+  renderRail(); renderHints(); renderBoard(); setView(false); renderBriefBanner(); refreshSettingsButton();
+  replayConversation();
+
+  const omitted = countOmittedAttachments(data);
+  addMsg("note", "Session imported — resuming at “" + PHASES[idx].label + "”." +
+    (omitted ? " " + omitted + " image/PDF attachment" + (omitted > 1 ? "s were" : " was") +
+               " metadata-only in the export and could not be restored." : ""));
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+// Redraw the chat from state.history, skipping the synthetic stage-direction
+// turns (parenthetical prompts the UI never showed as student bubbles).
+function replayConversation() {
+  chatEl.innerHTML = "";
+  for (const m of state.history) {
+    if (m.role === "user") {
+      const c = (m.content || "").trim();
+      if (/^\(.*\)$/s.test(c)) continue;   // synthetic prompt, was never shown
+      addMsg("user", m.content, false, m.attachments);
+    } else {
+      let text = m.content || "";
+      const hadMermaid = /```mermaid/.test(text);
+      text = text.replace(/```mermaid[\s\S]*?```/g, "").replace(/\[READY_TO_ADVANCE\]/g, "").trim();
+      addMsg("assistant", text || "(The tutor updated the diagram.)", hadMermaid);
+    }
+  }
+}
 
 function boot(isReset) {
   renderRail(); renderHints(); renderBoard(); setView(false); renderBriefBanner(); refreshSettingsButton();
