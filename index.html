@@ -411,6 +411,24 @@
     box-shadow: none; border: none; background: none; height: auto; cursor: default;
   }
   .zoom-controls .zoom-level:hover { color: var(--ink-soft); }
+
+  /* ---------- "What is this?" inspect mode ---------- */
+  .zoom-controls button#inspect-toggle { font-weight: 700; }
+  .zoom-controls button#inspect-toggle.on {
+    background: var(--blueprint); border-color: var(--blueprint); color: #fff;
+  }
+  #diagram-host.inspecting { cursor: help; }
+  #diagram-host.inspecting .inspect-hit {
+    filter: drop-shadow(0 0 2px rgba(166,85,36,0.95)) drop-shadow(0 0 6px rgba(166,85,36,0.55));
+    cursor: pointer;
+  }
+  .inspect-banner {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 6;
+    background: var(--blueprint); color: #fff; border-radius: 999px;
+    padding: 6px 16px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(28,39,51,0.25);
+    display: none; white-space: nowrap; pointer-events: none;
+  }
+  .inspect-banner.show { display: block; }
 </style>
 </head>
 <body>
@@ -508,11 +526,13 @@
       <pre id="source-view"></pre>
       <div id="brief-reader"></div>
       <div class="zoom-controls" id="zoom-controls">
+        <button id="inspect-toggle" title="What is this? — click any diagram element for an explanation" aria-label="What is this? Click a diagram element for an explanation" aria-pressed="false">?</button>
         <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
         <span class="zoom-level" id="zoom-level">100%</span>
         <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
         <button id="zoom-reset" title="Reset view" aria-label="Reset view">⟳</button>
       </div>
+      <div class="inspect-banner" id="inspect-banner" aria-hidden="true">What is this? — click any highlighted element for an explanation (Esc to cancel)</div>
     </div>
   </section>
 </main>
@@ -2029,6 +2049,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   document.querySelectorAll(".modal-backdrop.show").forEach(m => m.classList.remove("show"));
   closeMenu();
+  if (inspectMode) setInspectMode(false);
 });
 
 /* ---------------- Drafting board: zoom & pan ---------------- */
@@ -2050,6 +2071,7 @@ function updateZoomUI() {
   const active = boardView === "diagram" && diagramPresent();
   $("zoom-controls").classList.toggle("show", active);
   $("diagram-host").classList.toggle("can-pan", active);
+  if (!active && inspectMode) setInspectMode(false);
   applyZoom();
 }
 (function initZoomPan() {
@@ -2064,7 +2086,7 @@ function updateZoomUI() {
   }, { passive: false });
   let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
   host.addEventListener("pointerdown", (e) => {
-    if (boardView !== "diagram" || !diagramPresent()) return;
+    if (boardView !== "diagram" || !diagramPresent() || inspectMode) return;
     dragging = true; sx = e.clientX; sy = e.clientY; ox = zoom.x; oy = zoom.y;
     host.classList.add("dragging");
     try { host.setPointerCapture(e.pointerId); } catch (_) {}
@@ -2080,6 +2102,97 @@ function updateZoomUI() {
   };
   host.addEventListener("pointerup", endDrag);
   host.addEventListener("pointercancel", endDrag);
+})();
+
+/* ---------------- "What is this?" inspect mode ---------------- */
+/* The ? button (zoom controls) arms a one-shot inspect mode: hovering
+   highlights the diagram element under the cursor, clicking it asks the
+   tutor what that element is — first the UML concept, then what it captures
+   in this project. The question goes through the ordinary tutor turn
+   (a synthetic parenthetical user message, like phase openings), so the
+   answer lands in the chat with the usual knowledge-answer treatment
+   (Sources + Further reading) and is logged in the session like any turn. */
+
+let inspectMode = false;
+let inspectHovered = null;
+
+function setInspectMode(on) {
+  if (on && (boardView !== "diagram" || !diagramPresent())) return;
+  inspectMode = on;
+  $("inspect-toggle").classList.toggle("on", on);
+  $("inspect-toggle").setAttribute("aria-pressed", on ? "true" : "false");
+  $("diagram-host").classList.toggle("inspecting", on);
+  $("inspect-banner").classList.toggle("show", on);
+  if (!on) clearInspectHover();
+}
+function clearInspectHover() {
+  if (inspectHovered) {
+    try { inspectHovered.classList.remove("inspect-hit"); } catch (_) {}
+    inspectHovered = null;
+  }
+}
+$("inspect-toggle").onclick = () => setInspectMode(!inspectMode);
+
+// Resolve a raw event target to the most meaningful inspectable element:
+// a textual leaf if it has content (a label, a multiplicity, an attribute
+// line…), else the nearest semantic group (node, cluster, edge label,
+// actor, note, fragment frame), else the graphic primitive itself (an edge
+// line, an arrowhead, a lifeline).
+function resolveInspectTarget(el, svg) {
+  if (!el || !svg.contains(el) || el === svg) return null;
+  const leaf = el.closest("text, tspan, span, p, foreignObject");
+  if (leaf && svg.contains(leaf)) {
+    const txt = (leaf.textContent || "").trim();
+    if (txt) return leaf.tagName.toLowerCase() === "tspan" ? (leaf.closest("text") || leaf) : leaf;
+  }
+  const grp = el.closest("g.node, g.cluster, g.edgeLabel, .note, .actor, .labelBox, .activation0, .activation1, .activation2");
+  if (grp && grp !== svg) return grp;
+  const prim = el.closest("path, line, polygon, polyline, rect, circle, ellipse");
+  if (prim && prim !== svg) return prim;
+  return null;
+}
+
+// A description of the clicked element the model can reason from: visible
+// text if any, plus the mermaid-assigned SVG classes (e.g. "edgeLabel",
+// "relation", "flowchart-link LS-A1 LE-SYS", "messageLine0"), which encode
+// what kind of element it is and often what it connects.
+function describeInspectTarget(t) {
+  const tag = t.tagName ? t.tagName.toLowerCase() : "element";
+  const text = (t.textContent || "").replace(/\s+/g, " ").trim().slice(0, 140);
+  const own = ((t.getAttribute && t.getAttribute("class")) || "").toString().trim();
+  const g = t.closest ? t.closest("g[class]") : null;
+  const ctx = g && g !== t ? ((g.getAttribute("class") || "").toString().trim()) : "";
+  let d = text ? `the visible label "${text}"` : `an unlabeled <${tag}> shape`;
+  if (own) d += ` (element classes: ${own})`;
+  if (ctx && ctx !== own) d += `, inside a group with classes "${ctx}"`;
+  return d;
+}
+
+(function initInspect() {
+  const host = $("diagram-host");
+  const currentSvg = () => $("diagram-zoom").querySelector("svg");
+  host.addEventListener("mouseover", (e) => {
+    if (!inspectMode) return;
+    const svg = currentSvg();
+    const t = svg ? resolveInspectTarget(e.target, svg) : null;
+    if (t === inspectHovered) return;
+    clearInspectHover();
+    if (t) { inspectHovered = t; t.classList.add("inspect-hit"); }
+  });
+  host.addEventListener("mouseleave", clearInspectHover);
+  host.addEventListener("click", (e) => {
+    if (!inspectMode) return;
+    const svg = currentSvg();
+    const t = svg ? resolveInspectTarget(e.target, svg) : null;
+    if (!t || state.busy) return;
+    e.stopPropagation();
+    const phase = PHASES[state.phaseIndex];
+    const desc = describeInspectTarget(t);
+    const shown = (t.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    setInspectMode(false);
+    addMsg("note", "What is this? — " + (shown ? "“" + shown + "”" : "the selected diagram element"));
+    send(`(The student is in "What is this?" mode and clicked an element of the current ${phase.boardTitle} (${phase.dialect}) diagram: ${desc}. Treat this as a UML knowledge question and answer it directly: first explain in a sentence or two what kind of UML element or notation this is — the underlying concept; then, if applicable, what it specifically captures in THIS project's diagram, using the names in the current diagram source. Keep it brief, include Sources and Further reading as your knowledge-answer rules require, do not change the diagram, do not output a mermaid block, and do not signal readiness.)`, true);
+  });
 })();
 
 /* ---------------- Collapsible panels ---------------- */

@@ -36,6 +36,7 @@ Any push to `main` redeploys automatically.
 
 - **Collapse either panel.** Use the **⟨ / ⟩** buttons in each panel's header to collapse the conversation or the drafting board down to a thin rail so the other fills the width; click the rail to bring it back. Handy for reading a large diagram or focusing on the dialogue.
 - **Zoom and pan the diagram.** In the Diagram view, use the **＋ / − / ⟳** controls (bottom-right), the mouse wheel to zoom, and drag to pan. Zoom persists as the tutor revises the diagram within a phase and resets when you move to a new phase.
+- **Ask "What is this?" about any diagram element.** Click the **?** button (above the zoom controls), then hover the diagram — the element under the cursor lights up — and click the one you're curious about: a class, an association, a multiplicity, a message, a guard… The tutor explains what that notation is as a UML concept and then what it captures in *this* project's diagram, with the usual Sources and Further-reading links. One answer per click; press **Esc** to leave the mode without asking.
 - **Export the diagram as an image.** **☰ Menu → Export diagram as PNG** downloads the current phase's diagram rasterized at 2× on a white background (ready for slides and documents); **Export diagram as SVG** downloads it as a lossless, scalable vector file. Both are re-rendered with SVG-native text labels so they open correctly in Word, Inkscape, and other viewers.
 
 ## Testing workflow suggestion
