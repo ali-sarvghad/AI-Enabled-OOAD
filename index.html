@@ -94,9 +94,6 @@
   .phase-node.done .phase-pill { border-color: var(--ready); color: var(--ready); background: var(--ready-soft); }
   .phase-node.active .phase-pill { border-color: var(--blueprint); background: var(--blueprint); color: #fff; font-weight: 600; }
   .phase-node.locked .phase-pill { opacity: 0.55; cursor: default; }
-  .phase-node.next-open .phase-pill { border-style: dashed; border-color: var(--blueprint); color: var(--blueprint); opacity: 0.85; }
-  .phase-node.next-open .phase-pill:hover { opacity: 1; background: var(--blueprint-soft); }
-  .phase-node.next-open.custom .phase-pill, .phase-node.next-open .phase-pill.custom { border-style: dashed; }
   .phase-arrow { width: 26px; height: 2px; background: var(--line); position: relative; margin: 0 2px; }
   .phase-arrow::after {
     content: "";
@@ -1026,39 +1023,21 @@ function renderRail() {
       arrow.className = "phase-arrow";
       rail.appendChild(arrow);
     }
-    // The immediately-next phase is always manually advanceable — even if the
-    // tutor hasn't signalled readiness — so the student can never be hard-stuck
-    // (the tutor sometimes keeps finding "one more thing"). Phases beyond it
-    // stay locked.
-    const reached = maxReached();
-    const isNextOpen = i === reached + 1;
+    // Advancement is earned: a phase unlocks only once the tutor has
+    // signalled readiness (which marks the prior phase completed). Reached
+    // phases stay freely revisitable; later phases are locked so the student
+    // can't skip ahead.
     const node = document.createElement("div");
     node.className = "phase-node "
-      + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : isNextOpen ? "next-open" : i > reached ? "locked" : "");
+      + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : i > maxReached() ? "locked" : "");
     const pill = document.createElement("button");
     pill.className = "phase-pill" + (p.custom ? " custom" : "");
     if (p.custom) pill.title = "Phase authored for this coursework";
-    else if (isNextOpen) pill.title = "Move on to this phase (you can return to any phase anytime)";
     pill.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>${p.label}`;
-    pill.onclick = () => {
-      if (state.busy) return;
-      if (i <= reached) { switchPhase(i, true); return; }
-      if (i === reached + 1) advanceToPhase(i);   // manual advance past an un-signalled phase
-    };
+    pill.onclick = () => { if (i <= maxReached() && !state.busy) switchPhase(i, true); };
     node.appendChild(pill);
     rail.appendChild(node);
   });
-}
-// Manually advance to a not-yet-reached phase (the one right after the
-// furthest reached). Confirms first, since the tutor hasn't marked the
-// current phase complete; the skipped phase stays revisitable and is NOT
-// marked "done" (that green state is reserved for earned readiness).
-function advanceToPhase(i) {
-  const from = PHASES[state.phaseIndex], to = PHASES[i];
-  if (!to) return;
-  if (!confirm(`Your tutor hasn't marked “${from.label}” complete yet. Move on to “${to.label}” anyway?\n\nYou can come back to any phase at any time.`)) return;
-  $("advance-banner").classList.remove("show");
-  switchPhase(i, false);
 }
 function maxReached() {
   let m = state.phaseIndex;
