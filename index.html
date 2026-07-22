@@ -1122,6 +1122,7 @@ let state = {
   diagrams: {},                 // phaseId -> current mermaid source
   diagramHistory: [],           // { phaseId, source, ts } — every revision, for export
   completed: new Set(),
+  openedPhases: new Set(),      // phases whose tutor opening turn has been delivered
   busy: false,
   brief: null,                  // { title, text, attachments }
   briefHighlights: [],          // student's highlighted phrases in the brief
@@ -1786,8 +1787,9 @@ function processReply(raw) {
 }
 
 async function send(userText, silentUser, attachments) {
-  if (state.busy) return;
-  if (!getKey()) { openSettings(true); return; }
+  if (state.busy) return false;
+  if (!getKey()) { openSettings(true); return false; }
+  let ok = false;
   const atts = attachments && attachments.length ? attachments : null;
   state.busy = true;
   $("btn-send").disabled = true;
@@ -1805,6 +1807,7 @@ async function send(userText, silentUser, attachments) {
     addMsg("assistant", text || "(The tutor updated the diagram.)", diagramUpdated);
     if (diagramUpdated) renderBoard();
     if (ready) showAdvance();
+    ok = true;
   } catch (e) {
     setThinking(false);
     state.history.pop(); // keep history consistent on failure
@@ -1821,6 +1824,7 @@ async function send(userText, silentUser, attachments) {
   }
   state.busy = false;
   $("btn-send").disabled = false;
+  return ok;
 }
 
 /* ---------------- Advancement ---------------- */
@@ -1863,8 +1867,14 @@ function switchPhase(index, isRevisit) {
   resetZoom();
   renderRail(); renderHints(); renderBoard(); setView(false);
   const phase = PHASES[index];
-  if (!isRevisit || !state.diagrams[phase.id]) {
-    send(`(The student has moved to the "${phase.label}" phase. Open this phase: in one or two sentences say what this diagram is for and why it comes now, then ask your first question — grounded in what the project has established so far.)`, true);
+  // The tutor's opening turn fires only on a phase's FIRST-ever entry.
+  // (It used to re-fire on any visit to a phase without a diagram, so
+  // revisiting an earlier phase and coming back duplicated the opener.)
+  // Marked opened only after the call succeeds, so a failed opener is
+  // retried on the next entry instead of leaving the phase unopened.
+  if (!state.openedPhases.has(phase.id)) {
+    send(`(The student has moved to the "${phase.label}" phase. Open this phase: in one or two sentences say what this diagram is for and why it comes now, then ask your first question — grounded in what the project has established so far.)`, true)
+      .then(ok => { if (ok) state.openedPhases.add(phase.id); });
   }
 }
 
@@ -2187,6 +2197,7 @@ function buildSessionPayload() {
     phaseIndex: state.phaseIndex,
     currentPhaseId: PHASES[state.phaseIndex].id,
     completedPhases: [...state.completed],
+    openedPhases: [...state.openedPhases],
     conversation: slimHistory(state.history),
     currentDiagrams: state.diagrams,
     diagramRevisionHistory: state.diagramHistory
@@ -2538,7 +2549,7 @@ $("btn-reset").onclick = () => {
   const brief = state.brief; // keep the loaded brief across resets — useful when re-running the same assignment
   const briefHighlights = state.briefHighlights; // keep the student's brief annotations too
   const curriculum = state.curriculum; // and the brief-derived phase plan — same coursework, same phases
-  state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief, briefHighlights, briefSearch: "", curriculum, metrics: freshMetrics() };
+  state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), openedPhases: new Set(), busy: false, brief, briefHighlights, briefSearch: "", curriculum, metrics: freshMetrics() };
   sessionFile = { handle: null, name: null };   // a new session must never overwrite the previous run's file
   chatEl.innerHTML = "";
   $("advance-banner").classList.remove("show");
@@ -2838,12 +2849,24 @@ function importSession(data) {
     return o;
   });
 
+  const diagrams = (data.currentDiagrams && typeof data.currentDiagrams === "object") ? { ...data.currentDiagrams } : {};
+  // Restore which phases have had their tutor opening turn; for files saved
+  // before this field existed, derive it — completed phases, phases with a
+  // diagram, and the resume phase have all certainly been opened.
+  const openedPhases = new Set(
+    (Array.isArray(data.openedPhases)
+      ? data.openedPhases
+      : [...(data.completedPhases || []), ...Object.keys(diagrams), PHASES[idx].id]
+    ).filter(id => PHASES.some(p => p.id === id))
+  );
+
   state = {
     phaseIndex: idx,
     history,
-    diagrams: (data.currentDiagrams && typeof data.currentDiagrams === "object") ? { ...data.currentDiagrams } : {},
+    diagrams,
     diagramHistory: Array.isArray(data.diagramRevisionHistory) ? data.diagramRevisionHistory.slice() : [],
     completed: new Set((data.completedPhases || []).filter(id => PHASES.some(p => p.id === id))),
+    openedPhases,
     busy: false,
     brief,
     briefHighlights: Array.isArray(data.briefHighlights) ? data.briefHighlights.slice() : [],
@@ -2889,6 +2912,7 @@ function boot(isReset) {
     "Welcome to the studio. We'll design a software system together in two stages — first Analysis (what the system must do), then Design (how it's built) — the way the module's coursework is structured. But we start where every project starts: not with screens or code, but with people.\n\nTell me about the system you have in mind: in a sentence or two, what should it do, and for whom? (You can also ask me anything about UML at any point — that's what I'm here for.)");
   state.history.push({ role: "user", content: "(The student has opened OOAD Studio. You have greeted them and asked them to describe, in a sentence or two, what their system should do and for whom.)" });
   state.history.push({ role: "assistant", content: "Welcome! Tell me about the system you have in mind: what should it do, and for whom?" });
+  state.openedPhases.add(PHASES[0].id);   // the greeting IS phase 1's opening turn — don't re-open it on a pill click
   seedBriefContextTurn(); // re-attach any brief document(s) so a persisted brief survives "New project"
   pendingAttachments = [];
   renderComposerAttachments();
