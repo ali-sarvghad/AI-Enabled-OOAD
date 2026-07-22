@@ -423,8 +423,12 @@
       <button id="btn-menu" class="menu-btn" aria-haspopup="true" aria-expanded="false">☰ Menu ▾</button>
       <div class="menu-pop" id="menu-pop" role="menu">
         <button id="btn-reset" role="menuitem">New session</button>
-        <button id="btn-import" role="menuitem">Import session…</button>
-        <button id="btn-export" role="menuitem">Export session</button>
+        <button id="btn-open" role="menuitem">Open session…</button>
+        <button id="btn-save" role="menuitem">Save session</button>
+        <button id="btn-saveas" role="menuitem">Save session as…</button>
+        <div class="menu-sep"></div>
+        <button id="btn-diagram-png" role="menuitem">Export diagram as PNG</button>
+        <button id="btn-diagram-svg" role="menuitem">Export diagram as SVG</button>
         <div class="menu-sep"></div>
         <button id="btn-brief" role="menuitem">Assignment brief…</button>
         <button id="btn-settings" role="menuitem">⚙ Settings</button>
@@ -569,7 +573,18 @@
    keeps the API key client-side by design, for one trusted user.
    ================================================================ */
 
-mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" });
+const MERMAID_BASE_CONFIG = { startOnLoad: false, theme: "neutral", securityLevel: "loose" };
+// Image export re-renders with SVG-native <text> labels: mermaid's default
+// HTML labels (<foreignObject>) taint the canvas (blocking PNG) and don't
+// render in most non-browser SVG viewers (Word, Inkscape…).
+const MERMAID_EXPORT_CONFIG = {
+  ...MERMAID_BASE_CONFIG,
+  htmlLabels: false,
+  flowchart: { htmlLabels: false },
+  class: { htmlLabels: false },
+  state: { htmlLabels: false }
+};
+mermaid.initialize(MERMAID_BASE_CONFIG);
 
 /* ---------------- Stages & phase curriculum ---------------- */
 /* Two high-level stages mirror the module's assessment: CW1 (Analysis)
@@ -1642,7 +1657,13 @@ $("brief-save").onclick = () => {
   addMsg("note", "Assignment brief loaded: " + state.brief.title + fileNote + " — the tutor will ground its questions in it from the next message.");
 };
 
-/* ---------------- Export ---------------- */
+/* ---------------- Session files: Save / Save As / Open ---------------- */
+/* One session = one JSON file (the established exportVersion-2 format, kept
+   byte-compatible so prior tooling and older exports keep working). Where
+   the browser supports the File System Access API (Chrome/Edge), Save
+   writes back to the opened/last-saved file and Save As picks a new one;
+   elsewhere each save falls back to downloading a copy, and Open falls back
+   to a plain file input. */
 
 // Keep exports readable: replace binary attachment payloads (image/PDF
 // base64) with metadata; text-file contents are small and kept.
@@ -1664,8 +1685,8 @@ function slimBrief(b) {
   return o;
 }
 
-$("btn-export").onclick = () => {
-  const payload = {
+function buildSessionPayload() {
+  return {
     // v2: added stage structure (Analysis/Design), self-describing
     // stage/phase metadata, provider, and (metadata-only) file attachments.
     // v1 fields are all still present and unchanged, so v1 tooling keeps
@@ -1685,14 +1706,143 @@ $("btn-export").onclick = () => {
     currentDiagrams: state.diagrams,
     diagramRevisionHistory: state.diagramHistory
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+}
+
+function downloadBlob(blob, name) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  const label = state.brief ? state.brief.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() : "session";
-  a.download = "ooad-studio-" + label + "-" + Date.now() + ".json";
+  a.download = name;
   a.click();
   URL.revokeObjectURL(a.href);
-};
+}
+
+// The file this session was opened from / last saved to. The handle (File
+// System Access API) lets Save write back in place; without one, Save
+// behaves like Save As. Cleared on New session so a fresh run can never
+// silently overwrite the previous run's file.
+let sessionFile = { handle: null, name: null };
+const SESSION_FILE_TYPES = [{ description: "OOAD Studio session (JSON)", accept: { "application/json": [".json"] } }];
+
+function suggestedSessionName() {
+  if (sessionFile.name) return sessionFile.name;
+  const label = state.brief ? state.brief.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() : "session";
+  return "ooad-studio-" + label + "-" + Date.now() + ".json";
+}
+
+async function saveSession(forcePicker) {
+  const blob = new Blob([JSON.stringify(buildSessionPayload(), null, 2)], { type: "application/json" });
+  try {
+    if (window.showSaveFilePicker) {
+      let handle = forcePicker ? null : sessionFile.handle;
+      if (!handle) handle = await window.showSaveFilePicker({ suggestedName: suggestedSessionName(), types: SESSION_FILE_TYPES });
+      const w = await handle.createWritable();
+      await w.write(blob);
+      await w.close();
+      sessionFile = { handle, name: handle.name };
+      addMsg("note", "Session saved to " + handle.name + ".");
+    } else {
+      // No File System Access API (Firefox/Safari): each save downloads a copy.
+      const name = suggestedSessionName();
+      downloadBlob(blob, name);
+      sessionFile = { handle: null, name };
+      addMsg("note", "Session downloaded as " + name + " — this browser can't write back to a file, so each save downloads a fresh copy.");
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return;   // user cancelled the picker
+    addMsg("note", "Could not save the session: " + e.message);
+  }
+}
+$("btn-save").onclick = () => saveSession(false);
+$("btn-saveas").onclick = () => saveSession(true);
+
+async function openSession() {
+  if (!window.showOpenFilePicker) { $("import-input").click(); return; }   // fallback: plain file input
+  let handle;
+  try { [handle] = await window.showOpenFilePicker({ types: SESSION_FILE_TYPES, multiple: false }); }
+  catch (e) { if (e && e.name !== "AbortError") addMsg("note", "Could not open the file: " + e.message); return; }
+  try {
+    const file = await handle.getFile();
+    if (importSession(JSON.parse(await file.text()))) sessionFile = { handle, name: file.name };
+  } catch (err) { addMsg("note", "Could not open session: " + err.message); }
+}
+$("btn-open").onclick = openSession;
+
+// Ctrl/Cmd+S saves (with Shift: Save As), Ctrl/Cmd+O opens — mirrors the menu.
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "s") { e.preventDefault(); saveSession(e.shiftKey); }
+  else if (k === "o") { e.preventDefault(); openSession(); }
+});
+
+/* ---------------- Diagram image export ---------------- */
+/* Exports the current phase's rendered diagram from the drafting board:
+   SVG as-is (lossless, scalable), or PNG rasterized at 2x on a white
+   background for pasting into documents and slides. */
+
+function diagramExportName(ext) {
+  const label = (state.brief && state.brief.title ? state.brief.title + "-" : "") + PHASES[state.phaseIndex].id;
+  return "ooad-" + label.replace(/[^a-z0-9]+/gi, "-").toLowerCase() + "." + ext;
+}
+
+async function exportDiagramImage(format) {
+  const src = state.diagrams[PHASES[state.phaseIndex].id];
+  if (!src) {
+    addMsg("note", "No diagram to export yet — the drafting board for this phase is empty.");
+    return;
+  }
+  // Re-render from source with the export config (SVG text labels — see
+  // MERMAID_EXPORT_CONFIG); the on-board rendering stays untouched.
+  let svgText;
+  mermaid.initialize(MERMAID_EXPORT_CONFIG);
+  try { ({ svg: svgText } = await mermaid.render("mmdexport" + (++renderSeq), src)); }
+  catch (e) {
+    addMsg("note", "Could not export the diagram — the current source doesn't render. See the Source tab and ask the tutor to fix it.");
+    return;
+  }
+  finally { mermaid.initialize(MERMAID_BASE_CONFIG); }
+
+  // Give the standalone file explicit pixel dimensions: mermaid emits
+  // width:100%/max-width styling, but Firefox's rasterizer (and image
+  // viewers) need real numbers.
+  const holder = document.createElement("div");
+  holder.innerHTML = svgText;
+  const svg = holder.querySelector("svg");
+  const vb = svg.viewBox && svg.viewBox.baseVal;
+  const w = Math.ceil((vb && vb.width) || parseFloat(svg.getAttribute("width")) || 800);
+  const h = Math.ceil((vb && vb.height) || parseFloat(svg.getAttribute("height")) || 600);
+  svg.setAttribute("width", w);
+  svg.setAttribute("height", h);
+  svg.style.maxWidth = "none";
+  svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  svg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+  const svgBlob = new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml;charset=utf-8" });
+
+  if (format === "svg") { downloadBlob(svgBlob, diagramExportName("svg")); return; }
+
+  const url = URL.createObjectURL(svgBlob);
+  try {
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("the diagram could not be rasterized")); img.src = url; });
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = w * scale;
+    canvas.height = h * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const png = await new Promise(res => canvas.toBlob(res, "image/png"));
+    if (!png) throw new Error("PNG encoding failed");
+    downloadBlob(png, diagramExportName("png"));
+  } catch (e) {
+    addMsg("note", "Could not export the diagram as PNG (" + e.message + ") — try “Export diagram as SVG” instead.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+$("btn-diagram-png").onclick = () => exportDiagramImage("png");
+$("btn-diagram-svg").onclick = () => exportDiagramImage("svg");
 
 /* ---------------- Settings ---------------- */
 
@@ -1783,10 +1933,11 @@ function refreshSettingsButton() {
 /* ---------------- Reset & boot ---------------- */
 
 $("btn-reset").onclick = () => {
-  if (!confirm("Start a new session? The current conversation and diagrams will be cleared. Export first if you want to keep this run.")) return;
+  if (!confirm("Start a new session? The current conversation and diagrams will be cleared. Save first if you want to keep this run.")) return;
   const brief = state.brief; // keep the loaded brief across resets — useful when re-running the same assignment
   const briefHighlights = state.briefHighlights; // keep the student's brief annotations too
   state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief, briefHighlights, briefSearch: "" };
+  sessionFile = { handle: null, name: null };   // a new session must never overwrite the previous run's file
   chatEl.innerHTML = "";
   $("advance-banner").classList.remove("show");
   boot(true);
@@ -1902,19 +2053,22 @@ menuPop.addEventListener("click", () => closeMenu());   // any item selection cl
 document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
 
 /* ---------------- Import session ---------------- */
-/* Rebuilds a session from the JSON produced by "Export session". Binary
-   attachments (image/PDF) are metadata-only in the export, so they can't be
-   restored; text, diagrams, brief text, highlights and the full transcript
-   all come back, and the student resumes at the exported phase. */
-$("btn-import").onclick = () => $("import-input").click();
+/* Rebuilds a session from a saved session JSON file. Binary attachments
+   (image/PDF) are metadata-only in the file, so they can't be restored;
+   text, diagrams, brief text, highlights and the full transcript all come
+   back, and the student resumes at the saved phase. This file-input path is
+   the Open fallback for browsers without the File System Access API — no
+   write-back handle exists, so a later Save behaves like Save As. */
 $("import-input").onchange = (e) => {
   const file = e.target.files && e.target.files[0];
-  e.target.value = "";   // allow re-importing the same file
+  e.target.value = "";   // allow re-opening the same file
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    try { importSession(JSON.parse(String(reader.result))); }
-    catch (err) { addMsg("note", "Could not import session: " + err.message); }
+    try {
+      if (importSession(JSON.parse(String(reader.result)))) sessionFile = { handle: null, name: file.name };
+    }
+    catch (err) { addMsg("note", "Could not open session: " + err.message); }
   };
   reader.onerror = () => addMsg("note", "Could not read that file.");
   reader.readAsText(file);
@@ -1941,10 +2095,10 @@ function countOmittedAttachments(data) {
 
 function importSession(data) {
   if (!data || typeof data !== "object" || !Array.isArray(data.conversation)) {
-    throw new Error("this doesn't look like an OOAD Studio export.");
+    throw new Error("this doesn't look like an OOAD Studio session file.");
   }
   if (hasRealWork() &&
-      !confirm("Import this session? It will replace the current conversation and diagrams. Export first if you want to keep this run.")) return;
+      !confirm("Open this session? It will replace the current conversation and diagrams. Save first if you want to keep this run.")) return false;
 
   // Resolve the phase to resume at (explicit index preferred, id as fallback).
   let idx = 0;
@@ -1985,10 +2139,11 @@ function importSession(data) {
   replayConversation();
 
   const omitted = countOmittedAttachments(data);
-  addMsg("note", "Session imported — resuming at “" + PHASES[idx].label + "”." +
+  addMsg("note", "Session opened — resuming at “" + PHASES[idx].label + "”." +
     (omitted ? " " + omitted + " image/PDF attachment" + (omitted > 1 ? "s were" : " was") +
-               " metadata-only in the export and could not be restored." : ""));
+               " metadata-only in the file and could not be restored." : ""));
   chatEl.scrollTop = chatEl.scrollHeight;
+  return true;
 }
 
 // Redraw the chat from state.history, skipping the synthetic stage-direction
