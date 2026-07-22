@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
 <style>
   :root {
+    color-scheme: light;
     --paper: #FAF9F6;
     --panel: #FFFFFF;
     --ink: #1C2733;
@@ -19,9 +20,47 @@
     --ready-soft: #E7F3EE;
     --warn: #A65524;
     --warn-soft: #FBF1E9;
+    --btn-fg: #FFFFFF;          /* text on solid accent buttons/pills */
+    --tutor-bg: #FCFCFB;
+    --code-bg: #10192B;
+    --code-fg: #CFE0F5;
+    --hl: #FFF2A8;              /* brief highlight */
+    --hl-search: #FFD59E;       /* brief search match */
+    --board-bg: #FFFFFF;
+    --grid-line: rgba(36, 86, 166, 0.045);
+    --tooltip-bg: #24303C;
     --mono: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
     --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   }
+  /* Dark theme: same variables, night palette. Accent colors lighten so they
+     read on dark panels; solid accent buttons flip to dark text. The diagram
+     board re-renders with matching mermaid themeVariables (see JS); image
+     EXPORTS always render light-on-white regardless of theme. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #10161D;
+    --panel: #1A222C;
+    --ink: #E2E8F0;
+    --ink-soft: #98A6B5;
+    --line: #2D3946;
+    --blueprint: #6FA0E8;
+    --blueprint-soft: #22334C;
+    --blueprint-deep: #AFC9F2;
+    --ready: #56B389;
+    --ready-soft: #16281F;
+    --warn: #D9915B;
+    --warn-soft: #2E2118;
+    --btn-fg: #0D1420;
+    --tutor-bg: #1E2733;
+    --code-bg: #0B1119;
+    --code-fg: #C4D6EC;
+    --hl: #6B5A14;
+    --hl-search: #7A4E1D;
+    --board-bg: #0F151C;
+    --grid-line: rgba(111, 160, 232, 0.06);
+    --tooltip-bg: #0B1017;
+  }
+  input, textarea, select { color: var(--ink); }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
@@ -92,7 +131,7 @@
   .phase-pill .idx { font-family: var(--mono); font-size: 10.5px; margin-right: 6px; opacity: 0.7; }
   .phase-pill.custom { border-style: dashed; }
   .phase-node.done .phase-pill { border-color: var(--ready); color: var(--ready); background: var(--ready-soft); }
-  .phase-node.active .phase-pill { border-color: var(--blueprint); background: var(--blueprint); color: #fff; font-weight: 600; }
+  .phase-node.active .phase-pill { border-color: var(--blueprint); background: var(--blueprint); color: var(--btn-fg); font-weight: 600; }
   .phase-node.locked .phase-pill { opacity: 0.55; cursor: default; }
   .phase-arrow { width: 26px; height: 2px; background: var(--line); position: relative; margin: 0 2px; }
   .phase-arrow::after {
@@ -140,7 +179,7 @@
     text-transform: uppercase; letter-spacing: 0.08em;
     color: var(--ink-soft); margin-bottom: 4px;
   }
-  .msg.tutor { align-self: flex-start; border-left: 3px solid var(--blueprint); padding: 8px 14px; background: #FCFCFB; border-radius: 0 8px 8px 0; }
+  .msg.tutor { align-self: flex-start; border-left: 3px solid var(--blueprint); padding: 8px 14px; background: var(--tutor-bg); border-radius: 0 8px 8px 0; }
   .msg.student { align-self: flex-end; background: var(--blueprint-soft); padding: 8px 14px; border-radius: 8px 8px 0 8px; }
   .msg.system-note { align-self: center; font-size: 12.5px; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 8px; padding: 6px 12px; }
   .msg .diagram-note {
@@ -167,7 +206,7 @@
     padding: 1px 5px; border-radius: 4px;
   }
   .msg .md pre {
-    background: #10192B; color: #CFE0F5; border-radius: 8px;
+    background: var(--code-bg); color: var(--code-fg); border-radius: 8px;
     padding: 10px 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5;
   }
   .msg .md pre code { background: none; color: inherit; padding: 0; }
@@ -190,7 +229,7 @@
   }
   .advance-banner.show { display: flex; }
   .advance-banner button {
-    background: var(--ready); color: #fff; border: none; border-radius: 6px;
+    background: var(--ready); color: var(--btn-fg); border: none; border-radius: 6px;
     padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600; font-family: var(--sans);
   }
 
@@ -204,7 +243,7 @@
   }
   .composer textarea:focus { outline: none; border-color: var(--blueprint); }
   .composer button {
-    background: var(--blueprint); color: #fff; border: none; border-radius: 8px;
+    background: var(--blueprint); color: var(--btn-fg); border: none; border-radius: 8px;
     padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans);
   }
   .composer button:disabled { opacity: 0.5; cursor: default; }
@@ -230,7 +269,7 @@
   .msg .msg-attachments img { max-height: 120px; max-width: 100%; border-radius: 6px; border: 1px solid var(--line); }
   .msg .msg-attachments .file-tag {
     display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-family: var(--mono);
-    background: rgba(255,255,255,0.6); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
   }
   .hint-row { padding: 0 16px 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   .hint-chip {
@@ -250,13 +289,13 @@
     border: none; background: none; font-size: 12px; padding: 5px 12px;
     cursor: pointer; color: var(--ink-soft); font-family: var(--sans);
   }
-  .view-toggle button.on { background: var(--blueprint); color: #fff; }
+  .view-toggle button.on { background: var(--blueprint); color: var(--btn-fg); }
   .board-body {
     flex: 1; overflow: auto; position: relative;
     background:
-      repeating-linear-gradient(0deg, transparent 0 23px, rgba(36,86,166,0.045) 23px 24px),
-      repeating-linear-gradient(90deg, transparent 0 23px, rgba(36,86,166,0.045) 23px 24px),
-      #FFFFFF;
+      repeating-linear-gradient(0deg, transparent 0 23px, var(--grid-line) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, var(--grid-line) 23px 24px),
+      var(--board-bg);
     padding: 26px;
   }
   #diagram-host { min-height: 100%; display: flex; align-items: flex-start; justify-content: center; }
@@ -266,7 +305,7 @@
   #source-view {
     display: none;
     font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap;
-    background: #10192B; color: #CFE0F5;
+    background: var(--code-bg); color: var(--code-fg);
     border-radius: 10px; padding: 18px; line-height: 1.6;
   }
   .render-error {
@@ -298,9 +337,9 @@
     padding: 22px 26px; line-height: 1.65; font-size: 14.5px; color: var(--ink);
   }
   #brief-reader .brief-text { white-space: pre-wrap; word-wrap: break-word; }
-  #brief-reader mark.brief-hl { background: #FFF2A8; color: inherit; border-radius: 2px; cursor: pointer; }
-  #brief-reader mark.brief-search { background: #FFD59E; color: inherit; border-radius: 2px; }
-  #brief-reader mark.brief-search.current { background: var(--warn); color: #fff; }
+  #brief-reader mark.brief-hl { background: var(--hl); color: inherit; border-radius: 2px; cursor: pointer; }
+  #brief-reader mark.brief-search { background: var(--hl-search); color: inherit; border-radius: 2px; }
+  #brief-reader mark.brief-search.current { background: var(--warn); color: var(--btn-fg); }
   #brief-reader .brief-empty { color: var(--ink-soft); text-align: center; padding: 40px 10px; }
   #brief-reader .brief-atts { display: flex; flex-wrap: wrap; gap: 14px; }
   #brief-reader .brief-text:not(:empty) + .brief-atts { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
@@ -374,7 +413,7 @@
   .modal .actions button {
     border-radius: 8px; padding: 8px 16px; font-size: 13.5px; cursor: pointer; font-family: var(--sans);
   }
-  .btn-primary { background: var(--blueprint); color: #fff; border: none; font-weight: 600; }
+  .btn-primary { background: var(--blueprint); color: var(--btn-fg); border: none; font-weight: 600; }
   .btn-ghost { background: none; border: 1px solid var(--line); color: var(--ink-soft); }
 
   /* ---------- Panel headers & collapse ---------- */
@@ -451,18 +490,24 @@
     content: "What is this? Click me, then click any element of the diagram — a class, an arrow, a multiplicity… — and your tutor explains what it means.";
     position: absolute; right: calc(100% + 12px); top: 50%; transform: translateY(-50%);
     width: 220px; white-space: normal; text-align: left;
-    background: var(--ink); color: #fff; border-radius: 8px;
+    background: var(--tooltip-bg); color: #fff; border-radius: 8px;
     padding: 9px 12px; font-size: 12px; font-weight: 400; line-height: 1.45; font-family: var(--sans);
     box-shadow: 0 6px 20px rgba(28,39,51,0.3);
     opacity: 0; pointer-events: none; transition: opacity 0.15s 0.1s; z-index: 8;
   }
   #inspect-toggle::before {
     content: ""; position: absolute; right: calc(100% + 6px); top: 50%; transform: translateY(-50%);
-    border-left: 6px solid var(--ink); border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+    border-left: 6px solid var(--tooltip-bg); border-top: 6px solid transparent; border-bottom: 6px solid transparent;
     opacity: 0; pointer-events: none; transition: opacity 0.15s 0.1s; z-index: 8;
   }
   #inspect-toggle:hover::after, #inspect-toggle:focus-visible::after,
   #inspect-toggle:hover::before, #inspect-toggle:focus-visible::before { opacity: 1; }
+  :root[data-theme="dark"] .zoom-controls button#inspect-toggle {
+    background: #3A2B1D; border-color: #8A5A32; color: #E8A868;
+  }
+  :root[data-theme="dark"] .zoom-controls button#inspect-toggle.on {
+    background: #C96A2A; border-color: #C96A2A; color: #fff;
+  }
   #diagram-host.inspecting { cursor: help; }
   #diagram-host.inspecting .inspect-hit {
     filter: drop-shadow(0 0 2px rgba(201,106,42,0.95)) drop-shadow(0 0 6px rgba(201,106,42,0.55));
@@ -498,6 +543,7 @@
         <button id="btn-metrics" role="menuitem">📊 Metrics</button>
         <div class="menu-sep"></div>
         <button id="btn-brief" role="menuitem">Assignment brief…</button>
+        <button id="btn-theme" role="menuitem">🌙 Dark mode</button>
         <button id="btn-settings" role="menuitem">⚙ Settings</button>
       </div>
     </div>
@@ -704,6 +750,54 @@ const MERMAID_BASE_CONFIG = {
     classText: "#1C2733"
   }
 };
+
+/* Night palette for the on-board diagram in dark mode. Image EXPORT always
+   uses MERMAID_EXPORT_CONFIG (spread from the light base config), so saved
+   PNGs/SVGs stay light-on-white in either theme. */
+const MERMAID_DARK_THEME_VARIABLES = {
+  ...MERMAID_BASE_CONFIG.themeVariables,
+  darkMode: true,
+  primaryColor: "#22334C",
+  primaryBorderColor: "#6FA0E8",
+  primaryTextColor: "#D7E3F4",
+  secondaryColor: "#16281F",
+  secondaryBorderColor: "#56B389",
+  secondaryTextColor: "#9ED8BC",
+  tertiaryColor: "#2A2318",
+  tertiaryBorderColor: "#8A6D3B",
+  lineColor: "#A3B2C2",
+  textColor: "#E2E8F0",
+  edgeLabelBackground: "#0F151C",
+  clusterBkg: "#2A2318",
+  clusterBorder: "#8A6D3B",
+  titleColor: "#AFC9F2",
+  actorBkg: "#22334C",
+  actorBorder: "#6FA0E8",
+  actorTextColor: "#D7E3F4",
+  actorLineColor: "#54677E",
+  signalColor: "#E2E8F0",
+  signalTextColor: "#E2E8F0",
+  activationBkgColor: "#2C4166",
+  activationBorderColor: "#6FA0E8",
+  labelBoxBkgColor: "#22334C",
+  labelBoxBorderColor: "#6FA0E8",
+  loopTextColor: "#AFC9F2",
+  noteBkgColor: "#3A3218",
+  noteBorderColor: "#8A6D3B",
+  noteTextColor: "#E8DFB8",
+  altBackground: "#1A222C",
+  classText: "#E2E8F0"
+};
+
+/* ---------------- Theme (light / dark) ---------------- */
+const THEME_KEY = "ooadstudio.theme";
+function currentTheme() { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
+function mermaidBoardConfig() {
+  return currentTheme() === "dark"
+    ? { ...MERMAID_BASE_CONFIG, themeVariables: MERMAID_DARK_THEME_VARIABLES }
+    : MERMAID_BASE_CONFIG;
+}
+document.documentElement.dataset.theme = currentTheme();   // apply before first paint of the app UI
 // Image export re-renders with SVG-native <text> labels: mermaid's default
 // HTML labels (<foreignObject>) taint the canvas (blocking PNG) and don't
 // render in most non-browser SVG viewers (Word, Inkscape…).
@@ -714,7 +808,7 @@ const MERMAID_EXPORT_CONFIG = {
   class: { htmlLabels: false },
   state: { htmlLabels: false }
 };
-mermaid.initialize(MERMAID_BASE_CONFIG);
+mermaid.initialize(mermaidBoardConfig());
 
 /* ---------------- Stages & phase curriculum ---------------- */
 /* Two high-level stages mirror the module's assessment: CW1 (Analysis)
@@ -2191,7 +2285,7 @@ async function exportDiagramImage(format) {
     addMsg("note", "Could not export the diagram — the current source doesn't render. See the Source tab and ask the tutor to fix it.");
     return;
   }
-  finally { mermaid.initialize(MERMAID_BASE_CONFIG); }
+  finally { mermaid.initialize(mermaidBoardConfig()); }
 
   // Give the standalone file explicit pixel dimensions: mermaid emits
   // width:100%/max-width styling, but Firefox's rasterizer (and image
@@ -2653,6 +2747,20 @@ menuBtn.onclick = (e) => {
 };
 menuPop.addEventListener("click", () => closeMenu());   // any item selection closes the menu
 document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
+
+/* Theme toggle: persists in localStorage and re-renders the diagram so the
+   board picks up the matching mermaid theme (exports stay light-on-white). */
+function refreshThemeButton() {
+  $("btn-theme").textContent = currentTheme() === "dark" ? "☀️ Light mode" : "🌙 Dark mode";
+}
+$("btn-theme").onclick = () => {
+  localStorage.setItem(THEME_KEY, currentTheme() === "dark" ? "light" : "dark");
+  document.documentElement.dataset.theme = currentTheme();
+  mermaid.initialize(mermaidBoardConfig());
+  refreshThemeButton();
+  renderBoard();
+};
+refreshThemeButton();
 
 /* ---------------- Import session ---------------- */
 /* Rebuilds a session from a saved session JSON file. Binary attachments

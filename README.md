@@ -25,7 +25,7 @@ Any push to `main` redeploys automatically.
 
 ## First run
 
-1. Open the deployed page → **☰ Menu → ⚙ Add API key** → **choose your provider** (Anthropic Claude, OpenAI GPT, or Google Gemini). The **☰ Menu** at the top-right holds all the session commands — New session, Open / Save / Save As, diagram image export, Assignment brief, and Settings.
+1. Open the deployed page → **☰ Menu → ⚙ Add API key** → **choose your provider** (Anthropic Claude, OpenAI GPT, or Google Gemini). The **☰ Menu** at the top-right holds all the session commands — New session, Open / Save / Save As, diagram image export, Metrics, Assignment brief, a light/dark **theme toggle**, and Settings. (The theme choice is remembered per browser; diagrams re-render to match, while exported diagram images always stay light-on-white for use in documents.)
 2. Paste that provider's API key, then click **Load models** — the model list is fetched live from the provider, so you always pick from what your key can actually use. Choose a model and **Save**.
    - Get a key from: Anthropic → https://console.anthropic.com/ · OpenAI → https://platform.openai.com/api-keys · Google (Gemini) → https://aistudio.google.com/apikey. Each provider needs its own credit/quota.
    - A separate key is remembered per provider, so you can switch vendors without re-entering keys. Keys are stored in your browser's localStorage only and are sent only to the provider you select — never to GitHub or anywhere else.
