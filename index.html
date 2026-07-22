@@ -413,18 +413,39 @@
   .zoom-controls .zoom-level:hover { color: var(--ink-soft); }
 
   /* ---------- "What is this?" inspect mode ---------- */
-  .zoom-controls button#inspect-toggle { font-weight: 700; }
-  .zoom-controls button#inspect-toggle.on {
-    background: var(--blueprint); border-color: var(--blueprint); color: #fff;
+  .zoom-controls button#inspect-toggle {
+    font-weight: 700; position: relative;
+    background: #FDE8D4; border-color: #E3A268; color: #A65524;
   }
+  .zoom-controls button#inspect-toggle:hover { border-color: #C96A2A; color: #A65524; }
+  .zoom-controls button#inspect-toggle.on {
+    background: #C96A2A; border-color: #C96A2A; color: #fff;
+  }
+  /* Custom tooltip (the native title is too easy to miss) */
+  #inspect-toggle::after {
+    content: "What is this? Click me, then click any element of the diagram — a class, an arrow, a multiplicity… — and your tutor explains what it means.";
+    position: absolute; right: calc(100% + 12px); top: 50%; transform: translateY(-50%);
+    width: 220px; white-space: normal; text-align: left;
+    background: var(--ink); color: #fff; border-radius: 8px;
+    padding: 9px 12px; font-size: 12px; font-weight: 400; line-height: 1.45; font-family: var(--sans);
+    box-shadow: 0 6px 20px rgba(28,39,51,0.3);
+    opacity: 0; pointer-events: none; transition: opacity 0.15s 0.1s; z-index: 8;
+  }
+  #inspect-toggle::before {
+    content: ""; position: absolute; right: calc(100% + 6px); top: 50%; transform: translateY(-50%);
+    border-left: 6px solid var(--ink); border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+    opacity: 0; pointer-events: none; transition: opacity 0.15s 0.1s; z-index: 8;
+  }
+  #inspect-toggle:hover::after, #inspect-toggle:focus-visible::after,
+  #inspect-toggle:hover::before, #inspect-toggle:focus-visible::before { opacity: 1; }
   #diagram-host.inspecting { cursor: help; }
   #diagram-host.inspecting .inspect-hit {
-    filter: drop-shadow(0 0 2px rgba(166,85,36,0.95)) drop-shadow(0 0 6px rgba(166,85,36,0.55));
+    filter: drop-shadow(0 0 2px rgba(201,106,42,0.95)) drop-shadow(0 0 6px rgba(201,106,42,0.55));
     cursor: pointer;
   }
   .inspect-banner {
     position: absolute; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 6;
-    background: var(--blueprint); color: #fff; border-radius: 999px;
+    background: #C96A2A; color: #fff; border-radius: 999px;
     padding: 6px 16px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(28,39,51,0.25);
     display: none; white-space: nowrap; pointer-events: none;
   }
@@ -526,7 +547,7 @@
       <pre id="source-view"></pre>
       <div id="brief-reader"></div>
       <div class="zoom-controls" id="zoom-controls">
-        <button id="inspect-toggle" title="What is this? — click any diagram element for an explanation" aria-label="What is this? Click a diagram element for an explanation" aria-pressed="false">?</button>
+        <button id="inspect-toggle" aria-label="What is this? Click a diagram element for an explanation" aria-pressed="false">?</button>
         <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
         <span class="zoom-level" id="zoom-level">100%</span>
         <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
