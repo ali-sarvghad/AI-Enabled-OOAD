@@ -301,15 +301,17 @@
   #brief-reader mark.brief-search { background: #FFD59E; color: inherit; border-radius: 2px; }
   #brief-reader mark.brief-search.current { background: var(--warn); color: #fff; }
   #brief-reader .brief-empty { color: var(--ink-soft); text-align: center; padding: 40px 10px; }
-  #brief-reader .brief-atts { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); display: flex; flex-wrap: wrap; gap: 14px; }
+  #brief-reader .brief-atts { display: flex; flex-wrap: wrap; gap: 14px; }
+  #brief-reader .brief-text:not(:empty) + .brief-atts { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
   #brief-reader .brief-atts figure { margin: 0; max-width: 240px; }
   #brief-reader .brief-atts img { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); }
   #brief-reader .brief-atts figcaption { font-size: 11.5px; color: var(--ink-soft); font-family: var(--mono); margin-top: 4px; }
-  #brief-reader .brief-att-file { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
-  #brief-reader .brief-att-file button {
-    border: 1px solid var(--blueprint); background: none; color: var(--blueprint);
-    border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; font-family: var(--sans);
+  #brief-reader .brief-atts figure.brief-pdf { flex: 1 1 100%; max-width: 100%; }
+  #brief-reader .brief-pdf figcaption { margin: 0 0 6px; }
+  #brief-reader .brief-pdf iframe {
+    width: 100%; height: 72vh; border: 1px solid var(--line); border-radius: 8px; background: #fff;
   }
+  #brief-reader .brief-att-file { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 
   /* ---------- Modals ---------- */
   .modal-backdrop {
@@ -1213,16 +1215,59 @@ function setView(mode) {
 
 /* ---------------- Brief reader (read / search / highlight) ---------------- */
 
+// The reader is two layers inside #brief-reader: a text layer (re-rendered
+// on every search keystroke and highlight change) and an attachments layer
+// (images and inline PDF viewers). The attachments layer is rebuilt only
+// when the brief itself changes, so the embedded PDF viewers keep their
+// scroll position — and don't reload — while the student searches or
+// highlights the text.
+function briefReaderParts() {
+  const host = $("brief-reader");
+  if (!host.querySelector(".brief-text")) {
+    host.innerHTML = '<div class="brief-text"></div><div class="brief-atts" style="display:none"></div>';
+  }
+  return { textEl: host.querySelector(".brief-text"), attsEl: host.querySelector(".brief-atts") };
+}
+
+let briefAttsFor;                 // which state.brief object the attachments layer currently shows
+const briefPdfUrls = new Map();   // pdf attachment -> object URL (revoked when the brief changes)
+
+function pdfObjectUrl(a) {
+  if (!briefPdfUrls.has(a)) {
+    const bin = atob(a.b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+    briefPdfUrls.set(a, URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })));
+  }
+  return briefPdfUrls.get(a);
+}
+
+function renderBriefAttachmentLayer(attsEl, b) {
+  if (briefAttsFor === b) return;   // same brief — keep the DOM and viewer state
+  briefAttsFor = b;
+  briefPdfUrls.forEach(u => URL.revokeObjectURL(u));
+  briefPdfUrls.clear();
+  const atts = (b && b.attachments) || [];
+  if (!atts.length) { attsEl.style.display = "none"; attsEl.innerHTML = ""; return; }
+  attsEl.style.display = "";
+  attsEl.innerHTML = atts.map(a => {
+    if (a.kind === "image") return `<figure><img src="data:${a.mediaType};base64,${a.b64}" alt="${escapeHtml(a.name)}"><figcaption>${escapeHtml(a.name)}</figcaption></figure>`;
+    if (a.kind === "pdf") return `<figure class="brief-pdf"><figcaption>📄 ${escapeHtml(a.name)}</figcaption><iframe src="${pdfObjectUrl(a)}" title="${escapeHtml(a.name)}"></iframe></figure>`;
+    return `<div class="brief-att-file">📎 ${escapeHtml(a.name)}</div>`;
+  }).join("");
+}
+
 // Render the brief with the student's highlights and current search matches.
 // Highlights are stored as phrases; every occurrence is marked (simple and
 // robust — no fragile DOM-range maths). Search wins visually over highlight.
 function renderBriefReader() {
-  const host = $("brief-reader");
+  const { textEl, attsEl } = briefReaderParts();
   const b = state.brief;
   const src = b && b.text ? b.text : "";
   const hasAtts = b && b.attachments && b.attachments.length;
+  renderBriefAttachmentLayer(attsEl, b);
   if (!b || (!src && !hasAtts)) {
-    host.innerHTML = `<div class="brief-empty">No brief loaded yet.<br>Use <strong>Assignment brief</strong> (top bar) to paste or upload one — text, PDF, or image.</div>`;
+    textEl.innerHTML = `<div class="brief-empty">No brief loaded yet.<br>Use <strong>Assignment brief</strong> (top bar) to paste or upload one — text, PDF, or image.</div>`;
     updateBriefCount(0);
     return;
   }
@@ -1250,16 +1295,7 @@ function renderBriefReader() {
     i = j;
   }
 
-  let atts = "";
-  if (hasAtts) {
-    atts = '<div class="brief-atts">' + b.attachments.map(a => {
-      if (a.kind === "image") return `<figure><img src="data:${a.mediaType};base64,${a.b64}" alt="${escapeHtml(a.name)}"><figcaption>${escapeHtml(a.name)}</figcaption></figure>`;
-      if (a.kind === "pdf") return `<div class="brief-att-file">📄 ${escapeHtml(a.name)} <button class="brief-open-pdf" data-name="${escapeHtml(a.name)}">open</button></div>`;
-      return `<div class="brief-att-file">📎 ${escapeHtml(a.name)}</div>`;
-    }).join("") + "</div>";
-  }
-
-  host.innerHTML = `<div class="brief-text">${html || '<span class="brief-empty">(This brief is attachments only — see below.)</span>'}</div>${atts}`;
+  textEl.innerHTML = html;   // attachments-only brief: text layer stays empty, the documents show below
   updateBriefCount(searchCount);
   if (briefSearchIdx >= searchCount) briefSearchIdx = 0;
   markCurrentSearch();
@@ -1310,28 +1346,14 @@ $("brief-clearhl").onclick = () => {
   state.briefHighlights = [];
   renderBriefReader();
 };
-// Click a highlight to remove just that phrase; click "open" to view a PDF.
+// Click a highlight to remove just that phrase.
 $("brief-reader").addEventListener("click", (e) => {
   const hl = e.target.closest("mark.brief-hl");
-  if (hl) {
-    const phrase = hl.textContent;
-    state.briefHighlights = state.briefHighlights.filter(h => h.toLowerCase() !== phrase.toLowerCase());
-    renderBriefReader();
-    return;
-  }
-  const pdfBtn = e.target.closest(".brief-open-pdf");
-  if (pdfBtn) openBriefPdf(pdfBtn.getAttribute("data-name"));
+  if (!hl) return;
+  const phrase = hl.textContent;
+  state.briefHighlights = state.briefHighlights.filter(h => h.toLowerCase() !== phrase.toLowerCase());
+  renderBriefReader();
 });
-function openBriefPdf(name) {
-  const a = (state.brief.attachments || []).find(x => x.name === name && x.kind === "pdf");
-  if (!a) return;
-  const bin = atob(a.b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
-  const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-  window.open(url, "_blank");
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
-}
 
 /* ---------------- Hints ---------------- */
 
