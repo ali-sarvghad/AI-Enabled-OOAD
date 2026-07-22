@@ -94,6 +94,9 @@
   .phase-node.done .phase-pill { border-color: var(--ready); color: var(--ready); background: var(--ready-soft); }
   .phase-node.active .phase-pill { border-color: var(--blueprint); background: var(--blueprint); color: #fff; font-weight: 600; }
   .phase-node.locked .phase-pill { opacity: 0.55; cursor: default; }
+  .phase-node.next-open .phase-pill { border-style: dashed; border-color: var(--blueprint); color: var(--blueprint); opacity: 0.85; }
+  .phase-node.next-open .phase-pill:hover { opacity: 1; background: var(--blueprint-soft); }
+  .phase-node.next-open.custom .phase-pill, .phase-node.next-open .phase-pill.custom { border-style: dashed; }
   .phase-arrow { width: 26px; height: 2px; background: var(--line); position: relative; margin: 0 2px; }
   .phase-arrow::after {
     content: "";
@@ -1023,17 +1026,39 @@ function renderRail() {
       arrow.className = "phase-arrow";
       rail.appendChild(arrow);
     }
+    // The immediately-next phase is always manually advanceable — even if the
+    // tutor hasn't signalled readiness — so the student can never be hard-stuck
+    // (the tutor sometimes keeps finding "one more thing"). Phases beyond it
+    // stay locked.
+    const reached = maxReached();
+    const isNextOpen = i === reached + 1;
     const node = document.createElement("div");
     node.className = "phase-node "
-      + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : i > maxReached() ? "locked" : "");
+      + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : isNextOpen ? "next-open" : i > reached ? "locked" : "");
     const pill = document.createElement("button");
     pill.className = "phase-pill" + (p.custom ? " custom" : "");
     if (p.custom) pill.title = "Phase authored for this coursework";
+    else if (isNextOpen) pill.title = "Move on to this phase (you can return to any phase anytime)";
     pill.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>${p.label}`;
-    pill.onclick = () => { if (i <= maxReached() && !state.busy) switchPhase(i, true); };
+    pill.onclick = () => {
+      if (state.busy) return;
+      if (i <= reached) { switchPhase(i, true); return; }
+      if (i === reached + 1) advanceToPhase(i);   // manual advance past an un-signalled phase
+    };
     node.appendChild(pill);
     rail.appendChild(node);
   });
+}
+// Manually advance to a not-yet-reached phase (the one right after the
+// furthest reached). Confirms first, since the tutor hasn't marked the
+// current phase complete; the skipped phase stays revisitable and is NOT
+// marked "done" (that green state is reserved for earned readiness).
+function advanceToPhase(i) {
+  const from = PHASES[state.phaseIndex], to = PHASES[i];
+  if (!to) return;
+  if (!confirm(`Your tutor hasn't marked “${from.label}” complete yet. Move on to “${to.label}” anyway?\n\nYou can come back to any phase at any time.`)) return;
+  $("advance-banner").classList.remove("show");
+  switchPhase(i, false);
 }
 function maxReached() {
   let m = state.phaseIndex;
@@ -1455,8 +1480,10 @@ function systemPrompt() {
     sp += "\n\n---- ASSIGNMENT BRIEF (the intended scope of this project; ground your questioning in it, but still make the student do the analysis — never recite conclusions from it) ----\n"
         + state.brief.text;
   }
-  sp += "\n\n---- CURRICULUM FOR THIS COURSEWORK (the full phase sequence; pace toward it) ----\n"
-      + PHASES.map((p, i) => (i + 1) + ". " + p.label + " (" + p.stage + ")" + (i === state.phaseIndex ? "  <- current phase" : "")).join("\n");
+  sp += "\n\n---- CURRICULUM FOR THIS COURSEWORK (the full phase sequence) ----\n"
+      + PHASES.map((p, i) => (i + 1) + ". " + p.label + " (" + p.stage + ")"
+          + (i === state.phaseIndex ? "  <- CURRENT PHASE" : state.completed.has(p.id) ? "  (done)" : "")).join("\n")
+      + "\nEach phase is completed and signalled INDEPENDENTLY. Work only on the CURRENT phase's own artifact and its READY criteria. Do NOT start, request, or fold in work that belongs to a later phase in this list — if a later phase covers CRC cards, sequence diagrams, testing, or design, that work happens THERE, not now. The brief may require deliverables that are later phases; their presence in this list is exactly why you must NOT do them early. As soon as the CURRENT phase's own READY criteria are met, output [READY_TO_ADVANCE] — a later phase existing is never a reason to withhold it.";
   sp += "\n\n---- CURRENT STAGE ----\n" + stage.label + " (" + stage.cw + ") — " + stage.blurb
       + "\n\n---- CURRENT PHASE ----\n" + phase.instructions
       + "\nMermaid dialect for this phase: " + phase.dialect
