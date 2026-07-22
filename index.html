@@ -90,6 +90,7 @@
     font-family: var(--sans);
   }
   .phase-pill .idx { font-family: var(--mono); font-size: 10.5px; margin-right: 6px; opacity: 0.7; }
+  .phase-pill.custom { border-style: dashed; }
   .phase-node.done .phase-pill { border-color: var(--ready); color: var(--ready); background: var(--ready-soft); }
   .phase-node.active .phase-pill { border-color: var(--blueprint); background: var(--blueprint); color: #fff; font-weight: 600; }
   .phase-node.locked .phase-pill { opacity: 0.55; cursor: default; }
@@ -689,7 +690,13 @@ const STAGES = [
   { id: "design",   label: "Design",   cw: "CW2", blurb: "The solution — how it is built. Implementable models a programmer could work from." }
 ];
 
-const PHASES = [
+/* PHASE_CATALOG holds every handcrafted phase the studio knows how to teach.
+   The eleven standard ones form the default curriculum; extras (e.g. CRC
+   Cards) exist for coursework briefs that require them. A loaded brief can
+   define its own phase sequence — picked from this catalog, plus AI-authored
+   custom phases for deliverables the catalog doesn't cover (see the
+   Curriculum planning section). The active sequence lives in PHASES. */
+const PHASE_CATALOG = [
   {
     id: "actors",
     stage: "analysis",
@@ -775,6 +782,23 @@ Have the student pick ONE high-value use case and walk its main success scenario
 Introduce when relevant: WHERE responsibility lives ("Which object checks the loan limit — and why that one?"); the failure path drawn with alt/opt; sync vs async when external systems appear.
 DIAGRAM: Mermaid "sequenceDiagram" — actor plus participants named after analysis classes, messages as intention-revealing phrases (not code yet), and an alt block for the failure path once discussed.
 READY: one full main flow plus at least one alt/failure fragment, with responsibility placement justified for the key messages.`
+  },
+  {
+    id: "crccards",
+    stage: "analysis",
+    label: "CRC Cards",
+    boardTitle: "CRC Cards",
+    boardSub: "Class–Responsibility–Collaborator cards for the candidate classes",
+    dialect: "classDiagram",
+    hints: ["What makes a good responsibility?", "Knowing vs doing responsibilities?", "When is a class doing too much?"],
+    instructions: `
+PHASE: CRC cards — Class, Responsibilities, Collaborators. (Catalog phase: included only when the coursework requires it.)
+WHY THIS STEP (open with this, in your own words): CRC cards force the key design question — WHO is responsible for WHAT — with no notation to hide behind. Each card names a class, the responsibilities it must fulfil (things it knows, things it does), and the collaborators it needs to fulfil them. Weak responsibility assignment shows up here, cheaply, before it calcifies into a bad class model.
+Ask the student to propose candidate classes from their earlier work (use cases, domain nouns) — one card at a time. For each card elicit: 2-4 RESPONSIBILITIES phrased as short knowing/doing phrases ("knows its due date", "calculates the fine"), then the COLLABORATORS the class must ask for help — and WHY each collaboration is needed.
+Probe: responsibilities that belong elsewhere ("should the Member calculate the fine, or the Loan?"); a card accumulating too much (a god class in the making — what could be split?); a card with no doing-responsibilities (a real class, or just data?).
+Introduce when relevant: high cohesion (a card's responsibilities should tell one story) and low coupling (fewer collaborators are easier to change and test).
+DIAGRAM: maintain a Mermaid "classDiagram" where each CRC card is a class whose compartment lists its responsibility phrases as plain lines (no types, no parentheses, no visibility markers), and each collaboration is an edge labeled "collaborates", e.g. Loan --> Member : collaborates. Cards, not classes — no operation compartments.
+READY: 3-5 cards, each with 2+ responsibilities in the student's own words, collaborators justified in conversation, and at least one responsibility-placement decision explicitly debated.`
   },
   {
     id: "state",
@@ -874,6 +898,14 @@ READY: every use case has at least one test, at least one negative and one bound
   }
 ];
 
+/* The standard curriculum — used whenever no coursework brief has defined
+   its own sequence. Catalog-only phases (e.g. crccards) are deliberately
+   absent here; a brief-derived plan pulls them in when the coursework
+   requires them. PHASES is the ACTIVE sequence and is reassigned when a
+   curriculum plan is installed (see installCurriculum). */
+const DEFAULT_PHASE_IDS = ["actors", "usecases", "activity", "analysisclass", "analysisseq", "state", "designclass", "designseq", "component", "deployment", "testing"];
+let PHASES = DEFAULT_PHASE_IDS.map(id => PHASE_CATALOG.find(p => p.id === id));
+
 /* ---------------- Tutor persona ---------------- */
 
 const BASE_SYSTEM = `You are the tutor inside "OOAD Studio", an experimental platform where undergraduate students learn object-oriented analysis and design by building a real model in conversation with you.
@@ -952,7 +984,8 @@ let state = {
   busy: false,
   brief: null,                  // { title, text, attachments }
   briefHighlights: [],          // student's highlighted phrases in the brief
-  briefSearch: ""               // current brief search term (transient)
+  briefSearch: "",              // current brief search term (transient)
+  curriculum: null              // brief-derived phase plan { title, sourceHash, phases:[{use}|{custom}] }; null = standard sequence
 };
 let boardView = "diagram";      // 'diagram' | 'source' | 'brief'
 let briefSearchIdx = 0;         // current search match index within the brief
@@ -994,7 +1027,8 @@ function renderRail() {
     node.className = "phase-node "
       + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : i > maxReached() ? "locked" : "");
     const pill = document.createElement("button");
-    pill.className = "phase-pill";
+    pill.className = "phase-pill" + (p.custom ? " custom" : "");
+    if (p.custom) pill.title = "Phase authored for this coursework";
     pill.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>${p.label}`;
     pill.onclick = () => { if (i <= maxReached() && !state.busy) switchPhase(i, true); };
     node.appendChild(pill);
@@ -1421,6 +1455,8 @@ function systemPrompt() {
     sp += "\n\n---- ASSIGNMENT BRIEF (the intended scope of this project; ground your questioning in it, but still make the student do the analysis — never recite conclusions from it) ----\n"
         + state.brief.text;
   }
+  sp += "\n\n---- CURRICULUM FOR THIS COURSEWORK (the full phase sequence; pace toward it) ----\n"
+      + PHASES.map((p, i) => (i + 1) + ". " + p.label + " (" + p.stage + ")" + (i === state.phaseIndex ? "  <- current phase" : "")).join("\n");
   sp += "\n\n---- CURRENT STAGE ----\n" + stage.label + " (" + stage.cw + ") — " + stage.blurb
       + "\n\n---- CURRENT PHASE ----\n" + phase.instructions
       + "\nMermaid dialect for this phase: " + phase.dialect
@@ -1753,6 +1789,13 @@ $("brief-clear").onclick = () => {
   if (boardView === "brief") renderBriefReader();
   $("brief-modal").classList.remove("show");
   addMsg("note", "Assignment brief cleared — tutor is now running brief-free.");
+  if (state.curriculum) {   // the phase plan belongs to the brief; restore the standard sequence with it
+    const prevPhaseId = PHASES[state.phaseIndex].id;
+    state.curriculum = installCurriculum(null);
+    const reopen = refreshAfterCurriculumChange(prevPhaseId);
+    addMsg("note", "Standard phase sequence restored.");
+    if (reopen) switchPhase(0, false);
+  }
 };
 $("brief-save").onclick = () => {
   const text = $("brief-text").value.trim();
@@ -1765,7 +1808,183 @@ $("brief-save").onclick = () => {
   $("brief-modal").classList.remove("show");
   const fileNote = attachments.length ? " (" + attachments.length + " file" + (attachments.length > 1 ? "s" : "") + " attached for the tutor to see)" : "";
   addMsg("note", "Assignment brief loaded: " + state.brief.title + fileNote + " — the tutor will ground its questions in it from the next message.");
+  deriveCurriculumFromBrief();
 };
+
+/* ---------------- Curriculum planning (brief-derived phases) ---------------- */
+/* When a coursework brief is loaded, a one-shot planning call reads it (text
+   and attached documents) and returns the phase sequence THIS coursework
+   requires: catalog phases by id, plus AI-authored custom phases for
+   deliverables the catalog doesn't cover (e.g. a data dictionary). The plan
+   is stored in state.curriculum, saved/restored with the session, and the
+   active PHASES array is rebuilt from it. No brief, no plan → the standard
+   eleven-phase sequence. The handcrafted catalog instructions are never
+   rewritten by the model — a plan only selects them or adds new phases. */
+
+const CURRICULUM_MAX_PHASES = 14;
+const CURRICULUM_DIALECTS = ["graph TB", "graph LR", "flowchart TD", "flowchart LR", "flowchart TB", "classDiagram", "sequenceDiagram", "stateDiagram-v2", "erDiagram"];
+
+function defaultPhases() { return DEFAULT_PHASE_IDS.map(id => PHASE_CATALOG.find(p => p.id === id)); }
+
+function normalizeCustomPhase(c) {
+  if (!c || typeof c !== "object") return null;
+  const id = String(c.id || c.label || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24);
+  const label = String(c.label || "").trim().slice(0, 40);
+  const instructions = String(c.instructions || "").trim().slice(0, 4000);
+  if (!id || !label || instructions.length < 40) return null;
+  return {
+    id,
+    custom: true,
+    stage: c.stage === "design" ? "design" : "analysis",
+    label,
+    boardTitle: String(c.boardTitle || label).trim().slice(0, 60),
+    boardSub: String(c.boardSub || "").trim().slice(0, 120),
+    dialect: CURRICULUM_DIALECTS.includes(c.dialect) ? c.dialect : "graph TB",
+    hints: Array.isArray(c.hints) ? c.hints.slice(0, 3).map(h => String(h).slice(0, 60)) : [],
+    instructions
+  };
+}
+
+// Resolve a stored/derived plan into concrete phase objects. Throws when the
+// plan can't yield a usable sequence (caller falls back to the default).
+function resolveCurriculumPlan(plan) {
+  const out = [], seen = new Set();
+  for (const item of (plan.phases || [])) {
+    let p = null;
+    if (item && item.use) p = PHASE_CATALOG.find(c => c.id === item.use) || null;
+    else if (item && item.custom) {
+      p = normalizeCustomPhase(item.custom);
+      if (p && PHASE_CATALOG.some(c => c.id === p.id)) p = PHASE_CATALOG.find(c => c.id === p.id); // id collision → the catalog version wins
+    }
+    if (!p || seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push(p);
+  }
+  // Analysis phases always precede design phases (stable within each stage).
+  const ordered = [...out.filter(p => p.stage === "analysis"), ...out.filter(p => p.stage === "design")].slice(0, CURRICULUM_MAX_PHASES);
+  if (ordered.length < 2) throw new Error("the plan contained fewer than two usable phases");
+  return ordered;
+}
+
+// Install a plan (or null for the standard sequence): swaps the active
+// PHASES array and returns the curriculum value to keep in state.
+function installCurriculum(plan) {
+  if (!plan) { PHASES = defaultPhases(); return null; }
+  PHASES = resolveCurriculumPlan(plan);
+  return { title: plan.title || "", sourceHash: plan.sourceHash || "", phases: plan.phases };
+}
+
+// Re-render everything phase-related after a curriculum change, keeping the
+// student on the same phase id when it survives the swap. Returns true when
+// the current phase no longer exists (caller should re-open at phase 0).
+function refreshAfterCurriculumChange(previousPhaseId) {
+  const keep = PHASES.findIndex(p => p.id === previousPhaseId);
+  state.phaseIndex = keep >= 0 ? keep : 0;
+  state.completed = new Set([...state.completed].filter(id => PHASES.some(p => p.id === id)));
+  $("advance-banner").classList.remove("show");
+  renderRail(); renderHints(); renderBoard();
+  return keep < 0;
+}
+
+function curriculumPlannerSystem() {
+  const catalog = PHASE_CATALOG.map(p => `- "${p.id}" (${p.stage}): ${p.label} — ${p.boardSub}`).join("\n");
+  return `You are the curriculum planner for OOAD Studio, a platform where an AI tutor guides an undergraduate student through object-oriented analysis and design one phase at a time, each phase producing one modeling artifact on a shared drafting board.
+
+Read the coursework brief (text and/or attached documents) and decide which phases THIS coursework requires, in what order. Output ONLY a JSON object — no prose, no markdown fence.
+
+PHASE CATALOG — prefer these; each entry is "id" (stage): name — coverage:
+${catalog}
+
+OUTPUT SHAPE:
+{
+  "curriculumTitle": "<short label for this coursework>",
+  "phases": [
+    { "use": "<catalog id>" },
+    { "custom": { "id": "<short lowercase id>", "label": "<pill label, 1-3 words>", "stage": "analysis" or "design", "boardTitle": "<drafting board heading>", "boardSub": "<one-line subtitle>", "dialect": "<one of: ${CURRICULUM_DIALECTS.join(", ")}>", "hints": ["<short student hint chip>", "<2-3 total>"], "instructions": "<tutor phase instructions — template below>" } }
+  ]
+}
+
+RULES:
+- Select ONLY phases the coursework actually assesses or requires, plus the minimal earlier phases needed to establish their inputs (a class model normally needs actors and use cases first) — but never pad the plan with phases the coursework ignores.
+- Every analysis-stage phase must come before every design-stage phase. If the coursework covers only one stage, include only that stage's phases.
+- 2 to 12 phases. Use catalog ids exactly as given.
+- Author a "custom" phase ONLY for a required deliverable no catalog phase covers (e.g. package diagram, data dictionary, use-case textual specification). Its "instructions" MUST follow this template (plain text, roughly 150-250 words):
+PHASE: <name> — <one-line purpose>.
+WHY THIS STEP (open with this, in your own words): <why this artifact exists and what question it answers>.
+<3-6 lines: what to elicit from the student and in what order. The student proposes; the tutor questions and refines; the tutor NEVER invents content the student has not stated. Include one "Introduce when relevant:" line naming a professional concern to raise contextually.>
+DIAGRAM: maintain a Mermaid "<dialect>" <precise drawing conventions for this artifact in that dialect; quote all labels containing spaces or punctuation>.
+READY: <2-3 concrete, checkable criteria for signalling the phase is complete>.
+- If the input does not read as a coursework brief, or gives no basis for choosing deliverables, output exactly {"useDefault": true}.`;
+}
+
+function parseJsonLoose(raw) {
+  let s = String(raw).trim();
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) s = fence[1].trim();
+  const a = s.indexOf("{"), z = s.lastIndexOf("}");
+  if (a < 0 || z <= a) return null;
+  try { return JSON.parse(s.slice(a, z + 1)); } catch (_) { return null; }
+}
+
+// Cheap stable fingerprint of the brief, so re-saving the same brief doesn't re-plan.
+function briefSourceHash(b) {
+  const s = (b.title || "") + "|" + (b.text || "") + "|" + (b.attachments || []).map(a => a.name + ":" + (a.b64 ? a.b64.length : (a.text || "").length)).join(",");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return String(h);
+}
+
+async function deriveCurriculumFromBrief() {
+  const b = state.brief;
+  if (!b || state.busy) return;
+  const hash = briefSourceHash(b);
+  if (state.curriculum && state.curriculum.sourceHash === hash) return;   // already planned for this exact brief
+  if (!getKey()) {
+    addMsg("note", "Phases: using the standard sequence. Add an API key in Settings and re-save the brief to let the studio plan the phases this coursework needs.");
+    return;
+  }
+  if (hasRealWork() &&
+      !confirm("Plan the phase sequence from this brief now? The phase rail may change to match the coursework; diagrams for phases that remain are kept.")) return;
+
+  const prevPhaseId = PHASES[state.phaseIndex].id;
+  state.busy = true;
+  $("btn-send").disabled = true;
+  addMsg("note", "Reading the coursework brief to plan the phases it requires…");
+  let needReopen = false, planned = false;
+  try {
+    const item = { role: "user", content: "COURSEWORK BRIEF" + (b.title ? " — " + b.title : "") + ":\n\n" + (b.text || "(The brief is in the attached document(s).)") };
+    if (b.attachments && b.attachments.length) item.attachments = b.attachments;
+    const raw = await PROVIDERS[getProvider()].chat(getKey(), getModel(), curriculumPlannerSystem(), [item]);
+    const plan = parseJsonLoose(raw);
+    if (!plan || plan.useDefault === true || !Array.isArray(plan.phases)) {
+      state.curriculum = installCurriculum(null);
+      needReopen = refreshAfterCurriculumChange(prevPhaseId);
+      addMsg("note", "Phases: the brief didn't call for a custom sequence — keeping the standard phases.");
+    } else {
+      plan.sourceHash = hash;
+      plan.title = String(plan.curriculumTitle || b.title || "").slice(0, 80);
+      try {
+        state.curriculum = installCurriculum(plan);
+        needReopen = refreshAfterCurriculumChange(prevPhaseId);
+        planned = true;
+      } catch (e) {
+        state.curriculum = installCurriculum(null);
+        needReopen = refreshAfterCurriculumChange(prevPhaseId);
+        addMsg("note", "Phases: the planned sequence wasn't usable (" + e.message + ") — keeping the standard phases.");
+      }
+    }
+  } catch (e) {
+    addMsg("note", "Phases: couldn't plan from the brief (" + e.message + ") — keeping the standard sequence. Re-save the brief to retry.");
+  }
+  state.busy = false;
+  $("btn-send").disabled = false;
+  if (planned) {
+    const customs = PHASES.filter(p => p.custom).map(p => p.label);
+    addMsg("note", "Phases planned for this coursework: " + PHASES.map(p => p.label).join(" → ") + "." +
+      (customs.length ? " Authored for this coursework: " + customs.join(", ") + "." : ""));
+  }
+  if (needReopen) switchPhase(0, false);
+}
 
 /* ---------------- Session files: Save / Save As / Open ---------------- */
 /* One session = one JSON file (the established exportVersion-2 format, kept
@@ -1797,14 +2016,16 @@ function slimBrief(b) {
 
 function buildSessionPayload() {
   return {
-    // v2: added stage structure (Analysis/Design), self-describing
-    // stage/phase metadata, provider, and (metadata-only) file attachments.
-    // v1 fields are all still present and unchanged, so v1 tooling keeps
-    // working; v2 readers can additionally group by stage.
-    exportVersion: 2,
+    // v3 = v2 + optional "curriculum" (the brief-derived phase plan; null
+    // means the standard sequence). Purely additive: every v2 field is
+    // unchanged, so prior tooling keeps working, and the existing "stages"/
+    // "phases" fields now describe whichever sequence was active.
+    // (v2 added stage structure, provider, and attachment metadata over v1.)
+    exportVersion: 3,
     exportedAt: new Date().toISOString(),
     provider: getProvider(),
     model: getModel(),
+    curriculum: state.curriculum,
     brief: slimBrief(state.brief),
     briefHighlights: state.briefHighlights,
     stages: STAGES.map(s => ({ id: s.id, label: s.label, cw: s.cw })),
@@ -2046,7 +2267,8 @@ $("btn-reset").onclick = () => {
   if (!confirm("Start a new session? The current conversation and diagrams will be cleared. Save first if you want to keep this run.")) return;
   const brief = state.brief; // keep the loaded brief across resets — useful when re-running the same assignment
   const briefHighlights = state.briefHighlights; // keep the student's brief annotations too
-  state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief, briefHighlights, briefSearch: "" };
+  const curriculum = state.curriculum; // and the brief-derived phase plan — same coursework, same phases
+  state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief, briefHighlights, briefSearch: "", curriculum };
   sessionFile = { handle: null, name: null };   // a new session must never overwrite the previous run's file
   chatEl.innerHTML = "";
   $("advance-banner").classList.remove("show");
@@ -2303,6 +2525,13 @@ function importSession(data) {
   if (hasRealWork() &&
       !confirm("Open this session? It will replace the current conversation and diagrams. Save first if you want to keep this run.")) return false;
 
+  // Restore the session's phase plan (v3 curriculum) — or the standard
+  // sequence for older files / default-curriculum sessions — BEFORE
+  // resolving indices, so they resolve against the right phase list.
+  let curriculum = null;
+  try { curriculum = installCurriculum(data.curriculum && Array.isArray(data.curriculum.phases) ? data.curriculum : null); }
+  catch (_) { curriculum = installCurriculum(null); }
+
   // Resolve the phase to resume at (explicit index preferred, id as fallback).
   let idx = 0;
   if (Number.isInteger(data.phaseIndex) && data.phaseIndex >= 0 && data.phaseIndex < PHASES.length) idx = data.phaseIndex;
@@ -2333,7 +2562,8 @@ function importSession(data) {
     busy: false,
     brief,
     briefHighlights: Array.isArray(data.briefHighlights) ? data.briefHighlights.slice() : [],
-    briefSearch: ""
+    briefSearch: "",
+    curriculum
   };
 
   $("advance-banner").classList.remove("show");
