@@ -346,7 +346,31 @@
     border-radius: 8px; padding: 10px 12px;
     font-size: 12.5px; color: var(--warn); line-height: 1.5; margin-top: 14px;
   }
+  .modal.modal-wide { width: min(680px, 94vw); }
   .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+  /* ---------- Metrics dialog ---------- */
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0 18px; }
+  @media (max-width: 620px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+  .metric-card { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .metric-card .v { font-size: 17px; font-weight: 700; color: var(--blueprint-deep); }
+  .metric-card .k { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .metrics-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .metrics-table th {
+    text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink-soft); padding: 6px 8px; border-bottom: 1px solid var(--line);
+  }
+  .metrics-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .metrics-table tr.current td { background: var(--blueprint-soft); }
+  .metrics-table .idx { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); margin-right: 4px; }
+  .metrics-table .num { text-align: right; font-family: var(--mono); font-size: 12px; }
+  .metrics-table .tcell .num { display: block; text-align: left; }
+  .time-bar { display: block; height: 6px; background: var(--blueprint-soft); border-radius: 3px; margin-top: 4px; overflow: hidden; min-width: 90px; }
+  .time-bar i { display: block; height: 100%; background: var(--blueprint); }
+  .status-done { color: var(--ready); font-weight: 600; }
+  .status-current { color: var(--blueprint); font-weight: 600; }
+  .status-idle { color: var(--ink-soft); }
+  .metrics-note { margin-top: 14px; font-size: 12px; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 10px; line-height: 1.5; }
   .modal .actions button {
     border-radius: 8px; padding: 8px 16px; font-size: 13.5px; cursor: pointer; font-family: var(--sans);
   }
@@ -471,6 +495,8 @@
         <button id="btn-diagram-png" role="menuitem">Export diagram as PNG</button>
         <button id="btn-diagram-svg" role="menuitem">Export diagram as SVG</button>
         <div class="menu-sep"></div>
+        <button id="btn-metrics" role="menuitem">📊 Metrics</button>
+        <div class="menu-sep"></div>
         <button id="btn-brief" role="menuitem">Assignment brief…</button>
         <button id="btn-settings" role="menuitem">⚙ Settings</button>
       </div>
@@ -584,6 +610,19 @@
     <div class="actions">
       <button class="btn-ghost" id="set-cancel">Cancel</button>
       <button class="btn-primary" id="set-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Metrics modal -->
+<div class="modal-backdrop" id="metrics-modal">
+  <div class="modal modal-wide">
+    <h2>Session metrics</h2>
+    <div class="sub">Active time in the studio for this session — idle gaps over 3 minutes and time with the tab hidden are not counted. Metrics are saved with the session file and continue when it is reopened.</div>
+    <div id="metrics-body"></div>
+    <div class="metrics-note">Engagement numbers are context, not assessment. The meaningful record of a student's work is the artifact history and the reasoning in the conversation — read those, not these.</div>
+    <div class="actions">
+      <button class="btn-primary" id="metrics-close">Close</button>
     </div>
   </div>
 </div>
@@ -975,6 +1014,14 @@ const DEFAULT_MODEL = {
   if (!localStorage.getItem(LS.provider)) localStorage.setItem(LS.provider, "anthropic");
 })();
 
+// Engagement metrics: active time (per phase), student turns per phase,
+// inspect-mode asks. Saved with the session so a reopened run continues its
+// clock. Everything else shown in the Metrics dialog is derived live from
+// history/diagramHistory rather than double-counted here.
+function freshMetrics() {
+  return { startedAt: new Date().toISOString(), totalActiveMs: 0, phase: {}, inspectClicks: 0 };
+}
+
 let state = {
   phaseIndex: 0,
   history: [],
@@ -985,7 +1032,8 @@ let state = {
   brief: null,                  // { title, text, attachments }
   briefHighlights: [],          // student's highlighted phrases in the brief
   briefSearch: "",              // current brief search term (transient)
-  curriculum: null              // brief-derived phase plan { title, sourceHash, phases:[{use}|{custom}] }; null = standard sequence
+  curriculum: null,             // brief-derived phase plan { title, sourceHash, phases:[{use}|{custom}] }; null = standard sequence
+  metrics: freshMetrics()       // engagement metrics (see freshMetrics)
 };
 let boardView = "diagram";      // 'diagram' | 'source' | 'brief'
 let briefSearchIdx = 0;         // current search match index within the brief
@@ -1657,6 +1705,7 @@ async function send(userText, silentUser, attachments) {
   try {
     const raw = await callTutor();
     state.history.push({ role: "assistant", content: raw });
+    if (!silentUser) phaseMetrics(PHASES[state.phaseIndex].id).studentTurns++;   // count only real, successful student turns
     const { text, diagramUpdated, ready } = processReply(raw);
     setThinking(false);
     addMsg("assistant", text || "(The tutor updated the diagram.)", diagramUpdated);
@@ -1690,6 +1739,7 @@ function showAdvance() {
     $("btn-advance").style.display = "none";
     $("advance-banner").classList.add("show");
     state.completed.add(cur.id);
+    if (!phaseMetrics(cur.id).completedAt) phaseMetrics(cur.id).completedAt = new Date().toISOString();
     renderRail();
     return;
   }
@@ -1707,7 +1757,9 @@ function showAdvance() {
 }
 
 $("btn-advance").onclick = () => {
-  state.completed.add(PHASES[state.phaseIndex].id);
+  const pid = PHASES[state.phaseIndex].id;
+  state.completed.add(pid);
+  if (!phaseMetrics(pid).completedAt) phaseMetrics(pid).completedAt = new Date().toISOString();
   $("advance-banner").classList.remove("show");
   switchPhase(state.phaseIndex + 1, false);
 };
@@ -2022,16 +2074,18 @@ function slimBrief(b) {
 
 function buildSessionPayload() {
   return {
-    // v3 = v2 + optional "curriculum" (the brief-derived phase plan; null
-    // means the standard sequence). Purely additive: every v2 field is
-    // unchanged, so prior tooling keeps working, and the existing "stages"/
-    // "phases" fields now describe whichever sequence was active.
-    // (v2 added stage structure, provider, and attachment metadata over v1.)
-    exportVersion: 3,
+    // v4 = v3 + optional "metrics" (engagement metrics: active time per
+    // phase, student turns, inspect asks). v3 added the optional
+    // "curriculum" (brief-derived phase plan; null = standard sequence).
+    // Both additions are purely additive: every v2 field is unchanged, so
+    // prior tooling keeps working, and the existing "stages"/"phases"
+    // fields describe whichever sequence was active.
+    exportVersion: 4,
     exportedAt: new Date().toISOString(),
     provider: getProvider(),
     model: getModel(),
     curriculum: state.curriculum,
+    metrics: state.metrics,
     brief: slimBrief(state.brief),
     briefHighlights: state.briefHighlights,
     stages: STAGES.map(s => ({ id: s.id, label: s.label, cw: s.cw })),
@@ -2181,6 +2235,122 @@ async function exportDiagramImage(format) {
 $("btn-diagram-png").onclick = () => exportDiagramImage("png");
 $("btn-diagram-svg").onclick = () => exportDiagramImage("svg");
 
+/* ---------------- Engagement metrics ---------------- */
+/* Active time accrues in 5s ticks while the tab is visible and the student
+   has interacted within the last 3 minutes; each tick is attributed to the
+   current phase. Counters that history already records (messages, diagram
+   revisions, attachments) are derived at display time, not double-counted.
+   IMPORTANT (see CLAUDE.md): engagement metrics are context for the
+   instructor, never an assessment signal — the dialog says so. */
+
+const METRICS_TICK_MS = 5000;
+const METRICS_IDLE_CUTOFF_MS = 3 * 60 * 1000;
+let lastActivityTs = Date.now();
+
+function phaseMetrics(pid) {
+  const m = state.metrics;
+  return m.phase[pid] || (m.phase[pid] = { activeMs: 0, studentTurns: 0 });
+}
+
+(function initMetricsClock() {
+  const bump = () => { lastActivityTs = Date.now(); };
+  ["keydown", "pointerdown", "wheel", "mousemove", "touchstart", "scroll"].forEach(ev =>
+    document.addEventListener(ev, bump, { passive: true, capture: true }));
+  setInterval(() => {
+    if (document.hidden || Date.now() - lastActivityTs > METRICS_IDLE_CUTOFF_MS) return;
+    state.metrics.totalActiveMs += METRICS_TICK_MS;
+    phaseMetrics(PHASES[state.phaseIndex].id).activeMs += METRICS_TICK_MS;
+    if ($("metrics-modal").classList.contains("show")) renderMetrics();   // live refresh while open
+  }, METRICS_TICK_MS);
+})();
+
+function fmtDur(ms) {
+  const s = Math.round((ms || 0) / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m" + (s % 60 ? " " + (s % 60) + "s" : "");
+  return Math.floor(m / 60) + "h " + (m % 60) + "m";
+}
+
+// Restore a saved metrics object defensively (unknown/absent fields zeroed).
+function reviveMetrics(m) {
+  const f = freshMetrics();
+  if (!m || typeof m !== "object") return f;
+  const phase = {};
+  if (m.phase && typeof m.phase === "object") {
+    for (const [k, v] of Object.entries(m.phase)) {
+      if (!v || typeof v !== "object") continue;
+      phase[k] = { activeMs: Number(v.activeMs) || 0, studentTurns: Number(v.studentTurns) || 0 };
+      if (typeof v.completedAt === "string") phase[k].completedAt = v.completedAt;
+    }
+  }
+  return {
+    startedAt: typeof m.startedAt === "string" ? m.startedAt : f.startedAt,
+    totalActiveMs: Number(m.totalActiveMs) || 0,
+    phase,
+    inspectClicks: Number(m.inspectClicks) || 0
+  };
+}
+
+function isRealStudentTurn(msg) {
+  return msg.role === "user" && !msg._brief && !/^\s*\(.*\)\s*$/s.test(msg.content || "");
+}
+
+function renderMetrics() {
+  const m = state.metrics;
+  const studentMsgs = state.history.filter(isRealStudentTurn).length;
+  const tutorMsgs = state.history.filter(msg => msg.role === "assistant" && !msg._brief).length;
+  const attachmentsShared = state.history.reduce((n, msg) => n + ((msg.role === "user" && !msg._brief && msg.attachments) ? msg.attachments.length : 0), 0);
+  const revisionsTotal = state.diagramHistory.length;
+  const started = new Date(m.startedAt);
+  const startedLabel = isNaN(started) ? "—" : started.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+  const cards = [
+    [fmtDur(m.totalActiveMs), "total active time"],
+    [state.completed.size + " / " + PHASES.length, "phases completed"],
+    [String(studentMsgs), "student messages"],
+    [String(tutorMsgs), "tutor replies"],
+    [String(revisionsTotal), "diagram revisions"],
+    [String(m.inspectClicks), "“what is this?” asks"],
+    [String(attachmentsShared), "files attached"],
+    [startedLabel, "session started"]
+  ];
+
+  const maxPhaseMs = Math.max(1, ...PHASES.map(p => (m.phase[p.id] || {}).activeMs || 0));
+  const rows = PHASES.map((p, i) => {
+    const pm = m.phase[p.id] || { activeMs: 0, studentTurns: 0 };
+    const revs = state.diagramHistory.filter(r => r.phaseId === p.id).length;
+    const status = i === state.phaseIndex ? '<span class="status-current">current</span>'
+      : state.completed.has(p.id) ? '<span class="status-done">done</span>' : '<span class="status-idle">—</span>';
+    const pct = Math.round(100 * (pm.activeMs || 0) / maxPhaseMs);
+    return `<tr class="${i === state.phaseIndex ? "current" : ""}">
+      <td><span class="idx">${String(i + 1).padStart(2, "0")}</span> ${escapeHtml(p.label)}${p.custom ? " ✎" : ""}</td>
+      <td>${status}</td>
+      <td class="tcell"><span class="num">${fmtDur(pm.activeMs)}</span><span class="time-bar"><i style="width:${pct}%"></i></span></td>
+      <td class="num">${pm.studentTurns}</td>
+      <td class="num">${revs}</td>
+    </tr>`;
+  });
+
+  // Time logged in phases that a curriculum re-plan later removed.
+  const orphanMs = Object.entries(m.phase)
+    .filter(([id]) => !PHASES.some(p => p.id === id))
+    .reduce((n, [, v]) => n + (v.activeMs || 0), 0);
+  if (orphanMs > 0) {
+    rows.push(`<tr><td colspan="2" style="color:var(--ink-soft)">(phases from a previous plan)</td><td class="tcell"><span class="num">${fmtDur(orphanMs)}</span></td><td class="num">—</td><td class="num">—</td></tr>`);
+  }
+
+  $("metrics-body").innerHTML =
+    `<div class="metrics-grid">${cards.map(c => `<div class="metric-card"><div class="v">${escapeHtml(c[0])}</div><div class="k">${c[1]}</div></div>`).join("")}</div>
+     <table class="metrics-table">
+       <thead><tr><th>Phase</th><th>Status</th><th>Active time</th><th>Turns</th><th>Revisions</th></tr></thead>
+       <tbody>${rows.join("")}</tbody>
+     </table>`;
+}
+
+$("btn-metrics").onclick = () => { renderMetrics(); $("metrics-modal").classList.add("show"); };
+$("metrics-close").onclick = () => $("metrics-modal").classList.remove("show");
+
 /* ---------------- Settings ---------------- */
 
 function setModelStatus(msg, isError) {
@@ -2274,7 +2444,7 @@ $("btn-reset").onclick = () => {
   const brief = state.brief; // keep the loaded brief across resets — useful when re-running the same assignment
   const briefHighlights = state.briefHighlights; // keep the student's brief annotations too
   const curriculum = state.curriculum; // and the brief-derived phase plan — same coursework, same phases
-  state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief, briefHighlights, briefSearch: "", curriculum };
+  state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), busy: false, brief, briefHighlights, briefSearch: "", curriculum, metrics: freshMetrics() };
   sessionFile = { handle: null, name: null };   // a new session must never overwrite the previous run's file
   chatEl.innerHTML = "";
   $("advance-banner").classList.remove("show");
@@ -2438,6 +2608,7 @@ function describeInspectTarget(t) {
     const phase = PHASES[state.phaseIndex];
     const desc = describeInspectTarget(t);
     const shown = (t.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    state.metrics.inspectClicks++;
     setInspectMode(false);
     addMsg("note", "What is this? — " + (shown ? "“" + shown + "”" : "the selected diagram element"));
     send(`(The student is in "What is this?" mode and clicked an element of the current ${phase.boardTitle} (${phase.dialect}) diagram: ${desc}. Treat this as a UML knowledge question and answer it directly: first explain in a sentence or two what kind of UML element or notation this is — the underlying concept; then, if applicable, what it specifically captures in THIS project's diagram, using the names in the current diagram source. Keep it brief, include Sources and Further reading as your knowledge-answer rules require, do not change the diagram, do not output a mermaid block, and do not signal readiness.)`, true);
@@ -2569,7 +2740,8 @@ function importSession(data) {
     brief,
     briefHighlights: Array.isArray(data.briefHighlights) ? data.briefHighlights.slice() : [],
     briefSearch: "",
-    curriculum
+    curriculum,
+    metrics: reviveMetrics(data.metrics)
   };
 
   $("advance-banner").classList.remove("show");
