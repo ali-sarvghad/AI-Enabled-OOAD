@@ -302,12 +302,41 @@
   #diagram-host svg { max-width: 100%; height: auto; }
   .board-empty { color: var(--ink-soft); font-size: 14px; text-align: center; max-width: 380px; margin: 60px auto 0; line-height: 1.6; }
   .board-empty .glyph { font-family: var(--mono); font-size: 30px; color: var(--blueprint); opacity: 0.4; display: block; margin-bottom: 10px; }
-  #source-view {
-    display: none;
-    font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap;
+  #source-view { display: none; flex-direction: column; gap: 10px; }
+  .source-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .source-toolbar .spacer { flex: 1; }
+  .source-toolbar .source-hint { font-size: 12px; color: var(--ink-soft); }
+  .source-status { font-size: 12px; font-family: var(--mono); min-height: 15px; }
+  .source-status.ok { color: var(--ready); }
+  .source-status.err { color: var(--warn); }
+  .source-toolbar button { border-radius: 6px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; font-family: var(--sans); }
+  #source-revert { background: none; border: 1px solid var(--line); color: var(--ink-soft); }
+  #source-revert:hover { border-color: var(--blueprint); color: var(--blueprint); }
+  #source-edit {
+    min-height: 260px; resize: vertical;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6; tab-size: 2;
     background: var(--code-bg); color: var(--code-fg);
-    border-radius: 10px; padding: 18px; line-height: 1.6;
+    border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+    white-space: pre; overflow: auto;
   }
+  #source-edit:focus { outline: none; border-color: var(--blueprint); }
+
+  /* ---------- Autosave status & restore banner ---------- */
+  .autosave-status { font-size: 11.5px; color: var(--ink-soft); font-family: var(--mono); white-space: nowrap; }
+  .autosave-status.saving { color: var(--blueprint); }
+  .autosave-status.err { color: var(--warn); }
+  .restore-banner {
+    margin: 10px 16px 0; display: none; align-items: center; gap: 10px;
+    background: var(--warn-soft); border: 1px solid var(--warn); color: var(--warn);
+    border-radius: 8px; padding: 8px 12px; font-size: 12.5px;
+  }
+  .restore-banner.show { display: flex; }
+  .restore-banner .spacer { flex: 1; }
+  .restore-banner button {
+    border: none; border-radius: 6px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+    font-family: var(--sans); background: var(--warn); color: #fff; font-weight: 600; white-space: nowrap;
+  }
+  .restore-banner button.ghost { background: none; border: 1px solid var(--warn); color: var(--warn); font-weight: 400; }
   .render-error {
     background: var(--warn-soft); border: 1px solid var(--warn); color: var(--warn);
     border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
@@ -529,6 +558,7 @@
     <h1>OOAD <span>Studio</span></h1>
     <div class="tag">research prototype — instructor testing build</div>
     <div class="spacer"></div>
+    <span class="autosave-status" id="autosave-status" title="Your work is autosaved in this browser"></span>
     <div class="menu-wrap">
       <button id="btn-menu" class="menu-btn" aria-haspopup="true" aria-expanded="false">☰ Menu ▾</button>
       <div class="menu-pop" id="menu-pop" role="menu">
@@ -564,6 +594,12 @@
       <button class="icon-btn" id="chat-collapse" title="Collapse conversation" aria-label="Collapse conversation">⟨</button>
     </div>
     <div class="brief-banner" id="brief-banner"></div>
+    <div class="restore-banner" id="restore-banner">
+      <span id="restore-text"></span>
+      <span class="spacer"></span>
+      <button id="restore-yes">Restore</button>
+      <button id="restore-no" class="ghost">Dismiss</button>
+    </div>
     <div class="chat-scroll" id="chat"></div>
     <div class="advance-banner" id="advance-banner">
       <span id="advance-text">Your tutor thinks this phase is in good shape.</span>
@@ -617,7 +653,16 @@
           </div>
         </div>
       </div>
-      <pre id="source-view"></pre>
+      <div id="source-view">
+        <div class="source-toolbar">
+          <span class="source-hint">Edit the diagram source to fine-tune it, then Apply. Your change is saved as a new revision.</span>
+          <span class="spacer"></span>
+          <span class="source-status" id="source-status" aria-live="polite"></span>
+          <button id="source-revert" type="button">Revert</button>
+          <button id="source-apply" type="button" class="btn-primary">Apply changes</button>
+        </div>
+        <textarea id="source-edit" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="(no diagram source yet — describe your model to the tutor, or start writing Mermaid here)"></textarea>
+      </div>
       <div id="brief-reader"></div>
       <div class="zoom-controls" id="zoom-controls">
         <button id="inspect-toggle" aria-label="What is this? Click a diagram element for an explanation" aria-pressed="false">?</button>
@@ -1389,7 +1434,10 @@ async function renderBoard() {
   const zoomLayer = $("diagram-zoom");
   const errSlot = $("render-error-slot");
   errSlot.innerHTML = "";
-  $("source-view").textContent = src || "(no diagram source yet)";
+  // Don't clobber an in-progress edit; refill only when the value is stale.
+  if (document.activeElement !== $("source-edit") && $("source-edit").value !== (src || "")) {
+    $("source-edit").value = src || "";
+  }
 
   if (!src) {
     zoomLayer.innerHTML = `<div class="board-empty"><span class="glyph">⟨⟨ ${phase.label.toLowerCase()} ⟩⟩</span>Nothing on the drafting board for this phase yet — it appears as your conversation produces model content.</div>`;
@@ -1419,8 +1467,9 @@ function setView(mode) {
   $("tab-source").classList.toggle("on", mode === "source");
   $("tab-brief").classList.toggle("on", mode === "brief");
   $("diagram-host").style.display = mode === "diagram" ? "flex" : "none";
-  $("source-view").style.display = mode === "source" ? "block" : "none";
+  $("source-view").style.display = mode === "source" ? "flex" : "none";
   $("brief-reader").style.display = mode === "brief" ? "block" : "none";
+  if (mode === "source") { $("source-edit").value = state.diagrams[PHASES[state.phaseIndex].id] || ""; setSourceStatus("", false); }
   $("brief-toolbar").style.display = mode === "brief" ? "flex" : "none";
   if (mode === "brief") {
     $("board-title").textContent = state.brief ? (state.brief.title || "Assignment brief") : "Assignment brief";
@@ -1434,6 +1483,49 @@ function setView(mode) {
   }
   updateZoomUI();
 }
+
+/* ---------------- Editable diagram source ---------------- */
+/* The Source tab is editable so the student can fine-tune the diagram by
+   hand. Apply validates the Mermaid first (a broken edit never replaces a
+   working diagram), commits it as a diagram revision, and re-renders. */
+
+function setSourceStatus(msg, isError) {
+  const el = $("source-status");
+  el.textContent = msg || "";
+  el.classList.toggle("err", !!isError);
+  el.classList.toggle("ok", !!msg && !isError);
+}
+
+async function applySourceEdit() {
+  const phase = PHASES[state.phaseIndex];
+  const src = $("source-edit").value.trim();
+  if (!src) { setSourceStatus("Nothing to apply — the source is empty.", true); return; }
+  if (src === (state.diagrams[phase.id] || "")) { setSourceStatus("No changes to apply.", false); return; }
+  setSourceStatus("Checking…", false);
+  try {
+    await mermaid.parse(src);   // throws on invalid syntax; leaves the current diagram untouched
+  } catch (e) {
+    const first = (e && e.message ? String(e.message).split("\n").find(l => l.trim()) : "") || "invalid Mermaid syntax";
+    setSourceStatus("Not applied — " + first.slice(0, 140), true);
+    return;
+  }
+  state.diagrams[phase.id] = src;
+  state.diagramHistory.push({ phaseId: phase.id, source: src, ts: new Date().toISOString(), edited: true });
+  markDirty();
+  setSourceStatus("Applied ✓ — saved as a revision.", false);
+  renderBoard();
+  setView("diagram");
+}
+
+$("source-apply").onclick = applySourceEdit;
+$("source-revert").onclick = () => {
+  $("source-edit").value = state.diagrams[PHASES[state.phaseIndex].id] || "";
+  setSourceStatus("Reverted to the current diagram.", false);
+};
+// Ctrl/Cmd+Enter applies from within the editor.
+$("source-edit").addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); applySourceEdit(); }
+});
 
 /* ---------------- Brief reader (read / search / highlight) ---------------- */
 
@@ -1824,6 +1916,7 @@ async function send(userText, silentUser, attachments) {
   }
   state.busy = false;
   $("btn-send").disabled = false;
+  if (ok) markDirty();
   return ok;
 }
 
@@ -1866,6 +1959,7 @@ function switchPhase(index, isRevisit) {
   state.phaseIndex = index;
   resetZoom();
   renderRail(); renderHints(); renderBoard(); setView(false);
+  markDirty();
   const phase = PHASES[index];
   // The tutor's opening turn fires only on a phase's FIRST-ever entry.
   // (It used to re-fire on any visit to a phase without a diagram, so
@@ -2340,6 +2434,98 @@ async function exportDiagramImage(format) {
 $("btn-diagram-png").onclick = () => exportDiagramImage("png");
 $("btn-diagram-svg").onclick = () => exportDiagramImage("svg");
 
+/* ---------------- Autosave ---------------- */
+/* A static build can't silently write to disk, so accidental-loss protection
+   lives in the browser: the session is snapshotted to localStorage a few
+   seconds after any real change, on a 30s safety net, and when the tab is
+   hidden/closed. On next load, if unsaved work is found, a Restore banner
+   offers it back — we never auto-overwrite. As a bonus, when a file has been
+   opened/saved this session (File System Access API) and its permission is
+   still granted, autosave also writes back to that file silently. The
+   snapshot is the same slim payload as Save, so binary attachments are
+   metadata-only (identical to export), but diagrams/conversation/curriculum/
+   metrics all round-trip. */
+
+const AUTOSAVE_KEY = "ooadstudio.autosave";
+const AUTOSAVE_DEBOUNCE_MS = 3000;
+const AUTOSAVE_INTERVAL_MS = 30000;
+let autosaveTimer = null, autosaveDirty = false;
+
+function setAutosaveStatus(kind, when) {
+  const el = $("autosave-status");
+  if (!el) return;
+  el.classList.toggle("saving", kind === "saving");
+  el.classList.toggle("err", kind === "err");
+  if (kind === "saving") el.textContent = "Saving…";
+  else if (kind === "err") { el.textContent = "Autosave off (storage full)"; }
+  else if (kind === "saved") el.textContent = "Saved " + fmtClock(when || Date.now());
+  else el.textContent = "";
+}
+function fmtClock(ts) {
+  try { return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); }
+  catch (_) { return ""; }
+}
+
+function markDirty() { autosaveDirty = true; if (!autosaveTimer) autosaveTimer = setTimeout(runAutosave, AUTOSAVE_DEBOUNCE_MS); }
+
+function writeAutosave(payload) {
+  const rec = JSON.stringify({ savedAt: new Date().toISOString(), payload });
+  try { localStorage.setItem(AUTOSAVE_KEY, rec); return true; }
+  catch (_) {
+    // Storage full: retry once without the (largest, least-critical) revision history.
+    try {
+      const trimmed = { ...payload, diagramRevisionHistory: [] };
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ savedAt: new Date().toISOString(), payload: trimmed }));
+      return true;
+    } catch (_2) { return false; }
+  }
+}
+
+async function runAutosave() {
+  if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+  autosaveDirty = false;
+  if (!hasRealWork()) return;               // never overwrite a good autosave with an empty session
+  setAutosaveStatus("saving");
+  const payload = buildSessionPayload();
+  const ok = writeAutosave(payload);
+  setAutosaveStatus(ok ? "saved" : "err");
+  // Bonus: write back to the opened file too, but only if we can do it silently.
+  if (ok && sessionFile.handle && sessionFile.handle.queryPermission) {
+    try {
+      if (await sessionFile.handle.queryPermission({ mode: "readwrite" }) === "granted") {
+        const w = await sessionFile.handle.createWritable();
+        await w.write(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+        await w.close();
+      }
+    } catch (_) { /* file busy or revoked — localStorage copy still holds */ }
+  }
+}
+
+// Periodic safety net (catches accrued metric time and any missed markDirty).
+setInterval(() => { if (hasRealWork()) runAutosave(); }, AUTOSAVE_INTERVAL_MS);
+// Best-effort flush when the tab is hidden or closed (synchronous localStorage write).
+document.addEventListener("visibilitychange", () => { if (document.hidden && hasRealWork()) writeAutosave(buildSessionPayload()); });
+window.addEventListener("beforeunload", () => { if (hasRealWork()) writeAutosave(buildSessionPayload()); });
+
+// Offer to restore an autosave on boot (called from boot(); never auto-loads).
+function offerAutosaveRestore() {
+  let rec;
+  try { rec = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch (_) { rec = null; }
+  const p = rec && rec.payload;
+  const hasWork = p && ((p.currentDiagrams && Object.keys(p.currentDiagrams).length) ||
+    (Array.isArray(p.conversation) && p.conversation.some(m => m.role === "user" && !/^\s*\(.*\)\s*$/s.test(m.content || ""))));
+  const banner = $("restore-banner");
+  if (!hasWork) { banner.classList.remove("show"); return; }
+  $("restore-text").textContent = "Autosaved work from " + fmtClock(rec.savedAt) + " was found in this browser. Restore it?";
+  banner.classList.add("show");
+  $("restore-yes").onclick = () => {
+    banner.classList.remove("show");
+    try { if (importSession(p)) { sessionFile = { handle: null, name: null }; setAutosaveStatus("saved", rec.savedAt); } }
+    catch (e) { addMsg("note", "Could not restore the autosave: " + e.message); }
+  };
+  $("restore-no").onclick = () => banner.classList.remove("show");
+}
+
 /* ---------------- Engagement metrics ---------------- */
 /* Active time accrues in 5s ticks while the tab is visible and the student
    has interacted within the last 3 minutes; each tick is attributed to the
@@ -2551,8 +2737,11 @@ $("btn-reset").onclick = () => {
   const curriculum = state.curriculum; // and the brief-derived phase plan — same coursework, same phases
   state = { phaseIndex: 0, history: [], diagrams: {}, diagramHistory: [], completed: new Set(), openedPhases: new Set(), busy: false, brief, briefHighlights, briefSearch: "", curriculum, metrics: freshMetrics() };
   sessionFile = { handle: null, name: null };   // a new session must never overwrite the previous run's file
+  localStorage.removeItem(AUTOSAVE_KEY);        // the student chose a fresh start (and was warned to save)
+  setAutosaveStatus("");
   chatEl.innerHTML = "";
   $("advance-banner").classList.remove("show");
+  $("restore-banner").classList.remove("show");
   boot(true);
 };
 
@@ -2916,6 +3105,7 @@ function boot(isReset) {
   seedBriefContextTurn(); // re-attach any brief document(s) so a persisted brief survives "New project"
   pendingAttachments = [];
   renderComposerAttachments();
+  if (!isReset) offerAutosaveRestore();   // first load only: offer to recover unsaved work
   if (!getKey() && !isReset) openSettings(true);
 }
 
