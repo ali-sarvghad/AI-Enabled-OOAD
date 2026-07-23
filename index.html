@@ -322,6 +322,18 @@
   #diagram-host svg { max-width: 100%; height: auto; }
   .board-empty { color: var(--ink-soft); font-size: 14px; text-align: center; max-width: 380px; margin: 60px auto 0; line-height: 1.6; }
   .board-empty .glyph { font-family: var(--mono); font-size: 30px; color: var(--blueprint); opacity: 0.4; display: block; margin-bottom: 10px; }
+  /* Markdown-artifact board (CRC cards, Volere shells, data dictionaries). */
+  .board-md { text-align: left; max-width: 720px; margin: 0 auto; padding: 8px 6px; font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+  .board-md .md-h { font-weight: 700; color: var(--blueprint-deep); margin: 16px 0 6px; font-size: 15px; }
+  .board-md .md-h:first-child { margin-top: 0; }
+  .board-md p { margin: 6px 0; }
+  .board-md ul, .board-md ol { margin: 6px 0 6px 20px; }
+  .board-md .md-table { border-collapse: collapse; width: 100%; margin: 6px 0 16px; background: var(--panel); }
+  .board-md .md-table th, .board-md .md-table td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+  .board-md .md-table th { background: var(--blueprint-soft); color: var(--blueprint-deep); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .board-md .md-table tr:nth-child(even) td { background: var(--paper); }
+  .board-md code { font-family: var(--mono); font-size: 12px; background: var(--blueprint-soft); padding: 1px 4px; border-radius: 3px; }
+  .board-md blockquote { border-left: 3px solid var(--line); margin: 8px 0; padding-left: 10px; color: var(--ink-soft); }
   #source-view { display: none; flex-direction: column; gap: 10px; }
   .source-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .source-toolbar .spacer { flex: 1; }
@@ -1001,7 +1013,8 @@ READY: one full main flow plus at least one alt/failure fragment, with responsib
     label: "CRC Cards",
     boardTitle: "CRC Cards",
     boardSub: "Class–Responsibility–Collaborator cards for the candidate classes",
-    dialect: "classDiagram",
+    renderer: "markdown",
+    dialect: "markdown",
     hints: ["What makes a good responsibility?", "Knowing vs doing responsibilities?", "When is a class doing too much?"],
     instructions: `
 PHASE: CRC cards — Class, Responsibilities, Collaborators. (Catalog phase: included only when the coursework requires it.)
@@ -1009,7 +1022,7 @@ WHY THIS STEP (open with this, in your own words): CRC cards force the key desig
 Ask the student to propose candidate classes from their earlier work (use cases, domain nouns) — one card at a time. For each card elicit: 2-4 RESPONSIBILITIES phrased as short knowing/doing phrases ("knows its due date", "calculates the fine"), then the COLLABORATORS the class must ask for help — and WHY each collaboration is needed.
 Probe: responsibilities that belong elsewhere ("should the Member calculate the fine, or the Loan?"); a card accumulating too much (a god class in the making — what could be split?); a card with no doing-responsibilities (a real class, or just data?).
 Introduce when relevant: high cohesion (a card's responsibilities should tell one story) and low coupling (fewer collaborators are easier to change and test).
-DIAGRAM: maintain a Mermaid "classDiagram" where each CRC card is a class whose compartment lists its responsibility phrases as plain lines (no types, no parentheses, no visibility markers), and each collaboration is an edge labeled "collaborates", e.g. Loan --> Member : collaborates. Cards, not classes — no operation compartments.
+ARTIFACT: this phase's board renders MARKDOWN, not a Mermaid diagram. Maintain a Markdown document with ONE card per class: a level-3 heading with the class name (e.g. "### Loan"), then a two-column table with the header row "| Responsibilities | Collaborators |", one row per responsibility, naming the collaborator that responsibility needs (or "—" when it needs none). Keep every card the student has established; add or revise minimally. Never say CRC cards are unsupported — render them as this table.
 READY: 3-5 cards, each with 2+ responsibilities in the student's own words, collaborators justified in conversation, and at least one responsibility-placement decision explicitly debated.`
   },
   {
@@ -1142,8 +1155,8 @@ YOUR PEDAGOGY — these rules are absolute:
        • for a video, a YouTube SEARCH link, which is always valid: https://www.youtube.com/results?search_query=YOUR+TOPIC+here (URL-encode spaces as +).
      Prefer a topic/index page you are confident exists over a guessed deep URL, and use a YouTube search link rather than guessing a specific video id. Make every further-reading item a real, clickable link — do not output plain resource names here.
    These two sections are additive and do NOT count toward your ~120-word prose budget. Then close the turn as usual — one next question, or hand the pencil back.
-6. THE DIAGRAM IS SHARED WORK. When (and only when) the conversation adds or changes model content, output the COMPLETE updated diagram source in a fenced block: \`\`\`mermaid ... \`\`\` using exactly the dialect specified for the current phase. Include everything established so far, changed minimally. One sentence noting what changed. If nothing changed, output no mermaid block.
-7. MERMAID MUST PARSE. Quote any node label containing spaces or punctuation. Keep IDs short and alphanumeric.
+6. THE ARTIFACT IS SHARED WORK. When (and only when) the conversation adds or changes model content, output the COMPLETE updated artifact in ONE fenced block, in the format the CURRENT PHASE specifies — usually \`\`\`mermaid in the phase's Mermaid dialect, but some phases specify a \`\`\`markdown document (tables/cards) instead. The board renders BOTH, so never claim an artifact is unsupported or must stay as conversational notes — render it in the specified format. Include everything established so far, changed minimally. One sentence noting what changed. If nothing changed, output no fenced block.
+7. MERMAID MUST PARSE (for Mermaid phases). Quote any node label containing spaces or punctuation. Keep IDs short and alphanumeric. For Markdown phases, emit valid GitHub-flavoured Markdown (a header row, a |---|---| delimiter row, then body rows for tables).
 8. SIGNAL READINESS. When the phase's READY criteria are genuinely met, include the exact token [READY_TO_ADVANCE] at the end of your reply (the platform turns it into a button — do not mention the token). Do not signal early to be nice.
 9. FORMATTING. Your replies are rendered as Markdown. Use it lightly to aid clarity — **bold** for a key term, *italics* for emphasis, and bullet or numbered lists when you enumerate. Keep it restrained: an ordinary Socratic question is a sentence or two of plain prose, not a formatted essay. Reserve headings and lists for genuine explanations.
 10. Warm, curious, concise. You are a design partner who respects the student enough to make them think.
@@ -1404,6 +1417,12 @@ function renderMarkdown(src) {
     return s;
   }
 
+  // GitHub-style tables: a header row, a |---|---| delimiter row, then body
+  // rows. Cells are inline-formatted. Used for tabular artifacts (CRC cards,
+  // Volere shells, data dictionaries) on the board, and any table in chat.
+  const splitRow = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim());
+  const isTableDelim = (r) => /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(r) && r.indexOf("-") >= 0;
+
   const lines = esc(src).split("\n");
   const out = [];
   let para = [];
@@ -1433,6 +1452,17 @@ function renderMarkdown(src) {
       flushPara(); const items = [];
       while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; }
       out.push("<ol>" + items.map(t => "<li>" + inline(t) + "</li>").join("") + "</ol>"); continue;
+    }
+    if (line.indexOf("|") >= 0 && i + 1 < lines.length && isTableDelim(lines[i + 1])) {
+      flushPara();
+      const header = splitRow(line);
+      i += 2;                                   // consume header + delimiter rows
+      const body = [];
+      while (i < lines.length && lines[i].indexOf("|") >= 0 && !/^\s*$/.test(lines[i])) { body.push(splitRow(lines[i])); i++; }
+      out.push('<table class="md-table"><thead><tr>' + header.map(h => "<th>" + inline(h) + "</th>").join("") + "</tr></thead><tbody>"
+        + body.map(cells => "<tr>" + cells.map(c => "<td>" + inline(c) + "</td>").join("") + "</tr>").join("")
+        + "</tbody></table>");
+      continue;
     }
     para.push(line); i++;
   }
@@ -1541,6 +1571,13 @@ async function renderBoard() {
     updateZoomUI();
     return;
   }
+  // Markdown-artifact phases (CRC cards, Volere shells, data dictionaries)
+  // render as an HTML document rather than a Mermaid diagram.
+  if (phase.renderer === "markdown") {
+    zoomLayer.innerHTML = `<div class="board-md">${renderMarkdown(src)}</div>`;
+    updateZoomUI();
+    return;
+  }
   try {
     const id = "mmd" + (++renderSeq);
     const { svg } = await mermaid.render(id, src);
@@ -1598,13 +1635,17 @@ async function applySourceEdit() {
   const src = $("source-edit").value.trim();
   if (!src) { setSourceStatus("Nothing to apply — the source is empty.", true); return; }
   if (src === (state.diagrams[phase.id] || "")) { setSourceStatus("No changes to apply.", false); return; }
-  setSourceStatus("Checking…", false);
-  try {
-    await mermaid.parse(src);   // throws on invalid syntax; leaves the current diagram untouched
-  } catch (e) {
-    const first = (e && e.message ? String(e.message).split("\n").find(l => l.trim()) : "") || "invalid Mermaid syntax";
-    setSourceStatus("Not applied — " + first.slice(0, 140), true);
-    return;
+  // Mermaid phases are syntax-checked before they replace a working diagram;
+  // Markdown-artifact phases accept any text (it always renders).
+  if (phase.renderer !== "markdown") {
+    setSourceStatus("Checking…", false);
+    try {
+      await mermaid.parse(src);   // throws on invalid syntax; leaves the current diagram untouched
+    } catch (e) {
+      const first = (e && e.message ? String(e.message).split("\n").find(l => l.trim()) : "") || "invalid Mermaid syntax";
+      setSourceStatus("Not applied — " + first.slice(0, 140), true);
+      return;
+    }
   }
   state.diagrams[phase.id] = src;
   state.diagramHistory.push({ phaseId: phase.id, source: src, ts: new Date().toISOString(), edited: true });
@@ -1795,10 +1836,13 @@ function systemPrompt() {
       + PHASES.map((p, i) => (i + 1) + ". " + p.label + " (" + p.stage + ")"
           + (i === state.phaseIndex ? "  <- CURRENT PHASE" : state.completed.has(p.id) ? "  (done)" : "")).join("\n")
       + "\nEach phase is completed and signalled INDEPENDENTLY. Work only on the CURRENT phase's own artifact and its READY criteria. Do NOT start, request, or fold in work that belongs to a later phase in this list — if a later phase covers CRC cards, sequence diagrams, testing, or design, that work happens THERE, not now. The brief may require deliverables that are later phases; their presence in this list is exactly why you must NOT do them early. As soon as the CURRENT phase's own READY criteria are met, output [READY_TO_ADVANCE] — a later phase existing is never a reason to withhold it.";
+  const artifactRule = phase.renderer === "markdown"
+    ? "\nARTIFACT FORMAT for this phase: a MARKDOWN document (headings, tables, lists) — NOT a Mermaid diagram. This board renders Markdown, including GitHub-style tables. When the artifact changes, output the COMPLETE updated artifact in ONE fenced ```markdown block. Never tell the student the artifact is unsupported or must stay as notes — this board renders it."
+    : "\nMermaid dialect for this phase: " + phase.dialect;
   sp += "\n\n---- CURRENT STAGE ----\n" + stage.label + " (" + stage.cw + ") — " + stage.blurb
       + "\n\n---- CURRENT PHASE ----\n" + phase.instructions
-      + "\nMermaid dialect for this phase: " + phase.dialect
-      + "\n\n---- CURRENT DIAGRAM SOURCE (revise minimally; keep all established content) ----\n"
+      + artifactRule
+      + "\n\n---- CURRENT ARTIFACT SOURCE (revise minimally; keep all established content) ----\n"
       + (current ? current : "(none yet)");
   return sp;
 }
@@ -1955,17 +1999,23 @@ async function callTutor() {
 
 function processReply(raw) {
   let text = raw;
-  const blocks = [...text.matchAll(/```mermaid\s*([\s\S]*?)```/g)];
+  // The board renders either a Mermaid diagram or a Markdown document per
+  // phase; pull the matching fenced block out of the reply and onto the board.
+  const phase = PHASES[state.phaseIndex];
+  const fence = phase.renderer === "markdown"
+    ? /```(?:markdown|md)\s*([\s\S]*?)```/g
+    : /```mermaid\s*([\s\S]*?)```/g;
+  const blocks = [...text.matchAll(fence)];
   let diagramUpdated = false;
   if (blocks.length) {
     const src = blocks[blocks.length - 1][1].trim();
     if (src) {
-      const phaseId = PHASES[state.phaseIndex].id;
+      const phaseId = phase.id;
       state.diagrams[phaseId] = src;
       state.diagramHistory.push({ phaseId, source: src, ts: new Date().toISOString() });
       diagramUpdated = true;
     }
-    text = text.replace(/```mermaid\s*[\s\S]*?```/g, "").trim();
+    text = text.replace(fence, "").trim();
   }
   let ready = false;
   if (text.includes("[READY_TO_ADVANCE]")) {
@@ -2192,6 +2242,9 @@ function normalizeCustomPhase(c) {
   const label = String(c.label || "").trim().slice(0, 40);
   const instructions = String(c.instructions || "").trim().slice(0, 4000);
   if (!id || !label || instructions.length < 40) return null;
+  // renderer "markdown" = a tabular/textual artifact (CRC cards, Volere shell,
+  // data dictionary) drawn as a Markdown table; otherwise a Mermaid diagram.
+  const renderer = c.renderer === "markdown" ? "markdown" : "mermaid";
   return {
     id,
     custom: true,
@@ -2199,7 +2252,8 @@ function normalizeCustomPhase(c) {
     label,
     boardTitle: String(c.boardTitle || label).trim().slice(0, 60),
     boardSub: String(c.boardSub || "").trim().slice(0, 120),
-    dialect: CURRICULUM_DIALECTS.includes(c.dialect) ? c.dialect : "graph TB",
+    renderer,
+    dialect: renderer === "markdown" ? "markdown" : (CURRICULUM_DIALECTS.includes(c.dialect) ? c.dialect : "graph TB"),
     hints: Array.isArray(c.hints) ? c.hints.slice(0, 3).map(h => String(h).slice(0, 60)) : [],
     instructions
   };
@@ -2260,7 +2314,7 @@ function refreshAfterCurriculumChange(previousPhaseId) {
 // phases as a full definition. Round-trips cleanly through resolveCurriculumPlan.
 function phaseToPlanItem(p) {
   if (!p.custom && PHASE_CATALOG.some(c => c.id === p.id)) return { use: p.id };
-  return { custom: { id: p.id, label: p.label, stage: p.stage, boardTitle: p.boardTitle, boardSub: p.boardSub, dialect: p.dialect, hints: p.hints, instructions: p.instructions } };
+  return { custom: { id: p.id, label: p.label, stage: p.stage, boardTitle: p.boardTitle, boardSub: p.boardSub, renderer: p.renderer, dialect: p.dialect, hints: p.hints, instructions: p.instructions } };
 }
 
 // Persist the current PHASES sequence into state.curriculum so it survives
@@ -2349,26 +2403,23 @@ function phaseAuthorSystem(stageId) {
 
 A student or instructor wants to add ONE new ${st.label} (${st.cw}) phase that produces a specific modelling artifact. Read their description and output ONLY a JSON object — no prose, no markdown fence.
 
-RENDERER — the drafting board renders with Mermaid, the only graphing library in this build. Choose the "dialect" from this list that best renders the requested artifact: ${CURRICULUM_DIALECTS.join(", ")}.
-- Relationship/flow artifacts → graph/flowchart.
-- Class-like or card artifacts (e.g. CRC cards) → classDiagram: one class per card, responsibilities as plain lines in the class body, collaborators as edges labelled "collaborates".
-- Requirement shells / templates (e.g. a Volere requirement) → requirementDiagram.
-- Entity/data artifacts (e.g. a data dictionary) → erDiagram.
-- Lifecycles → stateDiagram-v2; interactions → sequenceDiagram; hierarchies/breakdowns → mindmap.
-Always map the artifact onto the closest dialect above — never request another library. If the artifact is inherently tabular, still express it in the chosen dialect and describe that mapping in the DIAGRAM line.
+RENDERER — the board draws each artifact one of two ways; set "renderer" to the one that fits:
+(A) "renderer": "mermaid" — for graphs, flows, lifecycles and interactions. Also set "dialect" to the best fit from: ${CURRICULUM_DIALECTS.join(", ")}. (Relationship/flow → graph/flowchart; lifecycles → stateDiagram-v2; interactions → sequenceDiagram; hierarchies → mindmap; requirement shells → requirementDiagram; entity/data → erDiagram.)
+(B) "renderer": "markdown" (set "dialect": "markdown") — for inherently TABULAR or textual artifacts the board should draw as a real table/document: CRC cards, a Volere requirements shell, a data dictionary, a use-case textual specification, a decision table. PREFER THIS over forcing a table into a diagram — the board renders GitHub-style Markdown tables natively.
+Never ask for a different library; every artifact fits one of these two renderers.
 
 OUTPUT SHAPE:
-{ "custom": { "id": "<short lowercase id>", "label": "<pill label, 1-3 words>", "boardTitle": "<drafting-board heading>", "boardSub": "<one-line subtitle>", "dialect": "<one of the list above>", "hints": ["<short student hint chip>", "<2-3 total>"], "instructions": "<tutor phase instructions — template below>" } }
+{ "custom": { "id": "<short lowercase id>", "label": "<pill label, 1-3 words>", "boardTitle": "<drafting-board heading>", "boardSub": "<one-line subtitle>", "renderer": "mermaid" or "markdown", "dialect": "<a Mermaid dialect, or the literal markdown>", "hints": ["<short student hint chip>", "<2-3 total>"], "instructions": "<tutor phase instructions — template below>" } }
 Do NOT include "stage" — the platform fixes it to "${stageId}".
 
 The "instructions" MUST follow this template (plain text, roughly 150-250 words) and MUST preserve the Socratic invariant — the tutor ELICITS from the student and never invents actors, classes, or content the student has not stated:
 PHASE: <name> — <one-line purpose>.
 WHY THIS STEP (open with this, in your own words): <why this artifact exists and what question it answers>.
 <3-6 lines: what to elicit from the student and in what order. The student proposes; the tutor questions and refines. Include one "Introduce when relevant:" line naming a professional concern to raise contextually.>
-DIAGRAM: maintain a Mermaid "<dialect>" <precise drawing conventions for this artifact in that dialect; quote every label containing spaces or punctuation>.
+ARTIFACT: for a Mermaid renderer — maintain a Mermaid "<dialect>" <precise drawing conventions; quote every label containing spaces or punctuation>. For a Markdown renderer — maintain a Markdown document, stating the exact table columns / heading structure, output in ONE fenced markdown block; the tutor must never call the artifact unsupported.
 READY: <2-3 concrete, checkable criteria for signalling the phase is complete>.
 
-If the description is not a modelling artifact, or you cannot map it to any dialect, output exactly {"error": "<one short reason>"}.`;
+If the description is not a modelling artifact, output exactly {"error": "<one short reason>"}.`;
 }
 
 let addPhaseStage = "analysis";
@@ -2376,7 +2427,7 @@ function openAddPhase(stageId) {
   if (state.busy) return;
   addPhaseStage = stageId;
   const st = STAGES.find(s => s.id === stageId);
-  $("addphase-sub").textContent = `A new ${st.label} (${st.cw}) phase. Describe the modelling artifact you want it to produce — the tutor will still elicit it Socratically, one question at a time, and draw it as the closest Mermaid representation the board can render.`;
+  $("addphase-sub").textContent = `A new ${st.label} (${st.cw}) phase. Describe the modelling artifact you want it to produce — the tutor will still elicit it Socratically, one question at a time. Diagrams draw with Mermaid; tabular artifacts (CRC cards, Volere shells, data dictionaries) draw as Markdown tables.`;
   $("addphase-desc").value = "";
   setAddPhaseStatus("");
   $("addphase-modal").classList.add("show");
@@ -2414,7 +2465,8 @@ async function createPhaseFromDescription() {
     state.busy = false; $("btn-send").disabled = false;   // clear before re-render so pills are clickable
     insertCustomPhase(phase);
     $("addphase-modal").classList.remove("show");
-    addMsg("note", `Added a ${STAGES.find(s => s.id === phase.stage).label} phase: “${phase.label}” — drawn as a Mermaid ${phase.dialect}. Drag its pill to reposition it, and open it when you're ready to build that artifact.`);
+    const drawnAs = phase.renderer === "markdown" ? "a Markdown table" : `a Mermaid ${phase.dialect}`;
+    addMsg("note", `Added a ${STAGES.find(s => s.id === phase.stage).label} phase: “${phase.label}” — drawn as ${drawnAs}. Drag its pill to reposition it, and open it when you're ready to build that artifact.`);
   } catch (e) {
     setAddPhaseStatus("Couldn't add the phase — " + (e.message || e) + ". Try describing the artifact differently.");
   } finally {
@@ -2437,9 +2489,10 @@ OUTPUT SHAPE:
   "curriculumTitle": "<short label for this coursework>",
   "phases": [
     { "use": "<catalog id>" },
-    { "custom": { "id": "<short lowercase id>", "label": "<pill label, 1-3 words>", "stage": "analysis" or "design", "boardTitle": "<drafting board heading>", "boardSub": "<one-line subtitle>", "dialect": "<one of: ${CURRICULUM_DIALECTS.join(", ")}>", "hints": ["<short student hint chip>", "<2-3 total>"], "instructions": "<tutor phase instructions — template below>" } }
+    { "custom": { "id": "<short lowercase id>", "label": "<pill label, 1-3 words>", "stage": "analysis" or "design", "boardTitle": "<drafting board heading>", "boardSub": "<one-line subtitle>", "renderer": "mermaid" or "markdown", "dialect": "<a Mermaid dialect from: ${CURRICULUM_DIALECTS.join(", ")} — or the literal markdown>", "hints": ["<short student hint chip>", "<2-3 total>"], "instructions": "<tutor phase instructions — template below>" } }
   ]
 }
+RENDERER for a custom phase: use "renderer":"mermaid" for diagrams (pick the matching dialect); use "renderer":"markdown" with "dialect":"markdown" for inherently TABULAR/textual deliverables (a data dictionary, a use-case textual specification, a decision table, a requirements shell) — the board draws those as real Markdown tables rather than a forced diagram.
 
 RULES:
 - Select ONLY phases the coursework actually assesses or requires, plus the minimal earlier phases needed to establish their inputs (a class model normally needs actors and use cases first) — but never pad the plan with phases the coursework ignores.
@@ -2449,7 +2502,7 @@ RULES:
 PHASE: <name> — <one-line purpose>.
 WHY THIS STEP (open with this, in your own words): <why this artifact exists and what question it answers>.
 <3-6 lines: what to elicit from the student and in what order. The student proposes; the tutor questions and refines; the tutor NEVER invents content the student has not stated. Include one "Introduce when relevant:" line naming a professional concern to raise contextually.>
-DIAGRAM: maintain a Mermaid "<dialect>" <precise drawing conventions for this artifact in that dialect; quote all labels containing spaces or punctuation>.
+ARTIFACT: for a Mermaid renderer — maintain a Mermaid "<dialect>" <precise drawing conventions; quote all labels containing spaces or punctuation>. For a Markdown renderer — maintain a Markdown document, stating the exact table columns / heading structure; the tutor outputs it in one fenced markdown block and never calls it unsupported.
 READY: <2-3 concrete, checkable criteria for signalling the phase is complete>.
 - If the input does not read as a coursework brief, or gives no basis for choosing deliverables, output exactly {"useDefault": true}.`;
 }
@@ -2657,9 +2710,14 @@ function diagramExportName(ext) {
 }
 
 async function exportDiagramImage(format) {
-  const src = state.diagrams[PHASES[state.phaseIndex].id];
+  const phase = PHASES[state.phaseIndex];
+  const src = state.diagrams[phase.id];
   if (!src) {
     addMsg("note", "No diagram to export yet — the drafting board for this phase is empty.");
+    return;
+  }
+  if (phase.renderer === "markdown") {
+    addMsg("note", "Image export is for diagram phases. This phase's artifact is a Markdown table — copy it from the Source tab, or export the whole session as JSON.");
     return;
   }
   // Re-render from source with the export config (SVG text labels — see
@@ -3111,7 +3169,8 @@ let inspectMode = false;
 let inspectHovered = null;
 
 function setInspectMode(on) {
-  if (on && (boardView !== "diagram" || !diagramPresent())) return;
+  // Inspect resolves SVG diagram elements; a Markdown-artifact board has none.
+  if (on && (boardView !== "diagram" || !diagramPresent() || PHASES[state.phaseIndex].renderer === "markdown")) return;
   inspectMode = on;
   $("inspect-toggle").classList.toggle("on", on);
   $("inspect-toggle").setAttribute("aria-pressed", on ? "true" : "false");
@@ -3369,9 +3428,11 @@ function replayConversation() {
       addMsg("user", m.content, false, m.attachments);
     } else {
       let text = m.content || "";
-      const hadMermaid = /```mermaid/.test(text);
-      text = text.replace(/```mermaid[\s\S]*?```/g, "").replace(/\[READY_TO_ADVANCE\]/g, "").trim();
-      addMsg("assistant", text || "(The tutor updated the diagram.)", hadMermaid);
+      // Strip whichever fenced artifact block the turn carried (Mermaid diagram
+      // or Markdown document) — it lives on the board, not in the chat bubble.
+      const hadArtifact = /```(?:mermaid|markdown|md)\b/.test(text);
+      text = text.replace(/```(?:mermaid|markdown|md)\s*[\s\S]*?```/g, "").replace(/\[READY_TO_ADVANCE\]/g, "").trim();
+      addMsg("assistant", text || "(The tutor updated the board.)", hadArtifact);
     }
   }
 }
