@@ -38,6 +38,12 @@ Any push to `main` redeploys automatically.
 
 Work is **autosaved in the browser** automatically — a few seconds after each change, on a 30-second safety net, and whenever the tab is hidden or closed — so an accidental refresh or crash won't lose a run. A small "Saved HH:MM" indicator sits by the menu. On the next visit, if unsaved work is found, a **Restore** banner offers it back (it never auto-overwrites). *New session* clears the autosave (you're warned to save first). Autosave is browser-local and, like the session file, stores images/PDFs as metadata only; use **Save** for a durable copy. (In Chrome/Edge, once you've saved or opened a file, autosave also writes back to that file silently.)
 
+### Shaping the phase sequence
+
+- **Add your own phases.** Each stage on the phase rail ends with a **＋** button (one for Analysis, one for Design). Click it, describe the modelling artifact you want — *CRC cards*, a *Volere requirements shell*, a *data dictionary*, a *package diagram* — and the studio authors a new phase for it: a board title, student hint chips, Socratic instructions (it still elicits the artifact from the student, never generates it), and the closest **Mermaid** representation the board can render (CRC cards as a class diagram, a Volere shell as a requirement diagram, a data dictionary as an ER diagram, and so on). Mermaid is the only renderer in this static build; artifacts it genuinely can't draw wait for the Stage-C PlantUML server (see `CLAUDE.md`). Authoring uses your API key, so add one in Settings first.
+- **Reorder by dragging.** Drag any phase pill along the rail to reposition it within its stage; drop it on the **＋** to send it to the end of that stage. Analysis always stays ahead of Design.
+- **Remove a custom phase.** Custom phases (dashed outline) carry a small **×** — click it to remove the phase and its drawing. Catalog phases can't be removed. The edited sequence is saved with the session and restored on open, and the tutor's own phase list updates to match, so it never nudges toward a phase you've dropped or added.
+
 ### Working with the drafting board
 
 - **Collapse either panel.** Use the **⟨ / ⟩** buttons in each panel's header to collapse the conversation or the drafting board down to a thin rail so the other fills the width; click the rail to bring it back. Handy for reading a large diagram or focusing on the dialogue.

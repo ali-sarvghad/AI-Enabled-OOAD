@@ -154,6 +154,26 @@
   }
   .stage-sep.current .stage-name { color: var(--blueprint); }
   .stage-sep .stage-cw { font-size: 10px; font-family: var(--mono); color: var(--ink-soft); opacity: 0.8; }
+  /* Per-stage "add a phase" control and drag-to-reposition affordances. */
+  .phase-add {
+    flex-shrink: 0; margin-left: 4px;
+    width: 26px; height: 26px; border-radius: 999px;
+    border: 1.5px dashed var(--line); background: var(--panel);
+    color: var(--ink-soft); font-size: 17px; line-height: 1; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--sans); transition: all 0.15s;
+  }
+  .phase-add:hover { border-style: solid; border-color: var(--blueprint); color: var(--blueprint); background: var(--blueprint-soft); }
+  .phase-pill[draggable="true"] { cursor: grab; }
+  .phase-node.dragging { opacity: 0.45; }
+  .phase-node.drop-target .phase-pill { box-shadow: -4px 0 0 -1px var(--blueprint); }
+  .phase-add.drop-target { border-style: solid; border-color: var(--blueprint); color: var(--blueprint); }
+  .phase-pill .rm {
+    margin-left: 7px; opacity: 0.55; font-family: var(--sans);
+    font-size: 13px; line-height: 1; border-radius: 999px; padding: 0 1px;
+  }
+  .phase-pill .rm:hover { opacity: 1; color: var(--warn); }
+  .phase-node.active .phase-pill .rm:hover { color: var(--btn-fg); background: rgba(255,255,255,0.25); }
 
   /* ---------- Main layout ---------- */
   main { flex: 1; display: grid; grid-template-columns: minmax(360px, 46%) 1fr; min-height: 0; }
@@ -738,6 +758,20 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="addphase-modal">
+  <div class="modal">
+    <h2>Add a phase</h2>
+    <div class="sub" id="addphase-sub">Describe a modelling artifact you want a new phase for.</div>
+    <label for="addphase-desc">What should this phase produce?</label>
+    <textarea id="addphase-desc" rows="4" placeholder="e.g., CRC cards for the candidate classes; a Volere requirements shell; a data dictionary; a package diagram…"></textarea>
+    <div class="warn-box" id="addphase-status" style="display:none"></div>
+    <div class="actions">
+      <button class="btn-ghost" id="addphase-cancel">Cancel</button>
+      <button class="btn-primary" id="addphase-create">Design this phase</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ================================================================
    OOAD Studio — research prototype (static / GitHub Pages build)
@@ -1192,6 +1226,7 @@ function getModel() {
 
 /* ---------------- Phase rail ---------------- */
 
+let draggedPhaseId = null;
 function renderRail() {
   const rail = $("phase-rail");
   rail.innerHTML = "";
@@ -1218,13 +1253,75 @@ function renderRail() {
     const node = document.createElement("div");
     node.className = "phase-node "
       + (i === state.phaseIndex ? "active" : state.completed.has(p.id) ? "done" : i > maxReached() ? "locked" : "");
+    node.dataset.phaseId = p.id;
     const pill = document.createElement("button");
     pill.className = "phase-pill" + (p.custom ? " custom" : "");
-    if (p.custom) pill.title = "Phase authored for this coursework";
-    pill.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>${p.label}`;
-    pill.onclick = () => { if (i <= maxReached() && !state.busy) switchPhase(i, true); };
+    if (p.custom) pill.title = "Custom phase — drag to reposition, × to remove";
+    pill.innerHTML = `<span class="idx">${String(i + 1).padStart(2, "0")}</span>${escapeHtml(p.label)}`
+      + (p.custom ? `<span class="rm" role="button" aria-label="Remove this phase">×</span>` : "");
+    pill.onclick = (e) => {
+      if (e.target.classList.contains("rm")) { e.stopPropagation(); deleteCustomPhase(p.id); return; }
+      if (i <= maxReached() && !state.busy) switchPhase(i, true);
+    };
+    // Drag to reposition within the same stage.
+    pill.draggable = true;
+    node.addEventListener("dragstart", (e) => {
+      if (state.busy) { e.preventDefault(); return; }
+      draggedPhaseId = p.id;
+      node.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", p.id); } catch (_) {}
+    });
+    node.addEventListener("dragend", () => {
+      draggedPhaseId = null;
+      rail.querySelectorAll(".dragging, .drop-target").forEach(n => n.classList.remove("dragging", "drop-target"));
+    });
+    node.addEventListener("dragover", (e) => {
+      const d = draggedPhaseId && PHASES.find(x => x.id === draggedPhaseId);
+      if (!d || d.stage !== p.stage || draggedPhaseId === p.id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      node.classList.add("drop-target");
+    });
+    node.addEventListener("dragleave", () => node.classList.remove("drop-target"));
+    node.addEventListener("drop", (e) => {
+      node.classList.remove("drop-target");
+      if (!draggedPhaseId || draggedPhaseId === p.id) return;
+      e.preventDefault();
+      movePhaseBefore(draggedPhaseId, p.id);
+    });
     node.appendChild(pill);
     rail.appendChild(node);
+
+    // A "+" at the end of each stage's run: add a custom phase to THAT stage.
+    // It also accepts a drop, meaning "move to the end of this stage".
+    if (i === PHASES.length - 1 || PHASES[i + 1].stage !== p.stage) {
+      const arrow = document.createElement("span");
+      arrow.className = "phase-arrow";
+      rail.appendChild(arrow);
+      const st = STAGES.find(s => s.id === p.stage);
+      const add = document.createElement("button");
+      add.className = "phase-add";
+      add.textContent = "+";
+      add.title = `Add a ${st.label} phase`;
+      add.setAttribute("aria-label", `Add a ${st.label} phase`);
+      add.onclick = () => openAddPhase(p.stage);
+      add.addEventListener("dragover", (e) => {
+        const d = draggedPhaseId && PHASES.find(x => x.id === draggedPhaseId);
+        if (!d || d.stage !== p.stage) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        add.classList.add("drop-target");
+      });
+      add.addEventListener("dragleave", () => add.classList.remove("drop-target"));
+      add.addEventListener("drop", (e) => {
+        add.classList.remove("drop-target");
+        if (!draggedPhaseId) return;
+        e.preventDefault();
+        movePhaseBefore(draggedPhaseId, null, p.stage);
+      });
+      rail.appendChild(add);
+    }
   });
 }
 function maxReached() {
@@ -2078,7 +2175,14 @@ $("brief-save").onclick = () => {
    rewritten by the model — a plan only selects them or adds new phases. */
 
 const CURRICULUM_MAX_PHASES = 14;
-const CURRICULUM_DIALECTS = ["graph TB", "graph LR", "flowchart TD", "flowchart LR", "flowchart TB", "classDiagram", "sequenceDiagram", "stateDiagram-v2", "erDiagram"];
+/* The dialects the drafting board can render (all Mermaid — the only renderer
+   in this static build). Broad enough that the phase author can map most
+   OOAD-adjacent artifacts onto a renderable shape: requirementDiagram suits
+   Volere-style requirement shells, classDiagram suits CRC/card artifacts,
+   erDiagram suits data dictionaries, mindmap/journey/timeline cover the rest.
+   Anything Mermaid genuinely can't draw waits for the Stage-C PlantUML
+   server (see CLAUDE.md) — this build does not load third-party libraries. */
+const CURRICULUM_DIALECTS = ["graph TB", "graph LR", "flowchart TD", "flowchart LR", "flowchart TB", "classDiagram", "sequenceDiagram", "stateDiagram-v2", "erDiagram", "requirementDiagram", "mindmap", "journey", "timeline"];
 
 function defaultPhases() { return DEFAULT_PHASE_IDS.map(id => PHASE_CATALOG.find(p => p.id === id)); }
 
@@ -2140,6 +2244,183 @@ function refreshAfterCurriculumChange(previousPhaseId) {
   $("advance-banner").classList.remove("show");
   renderRail(); renderHints(); renderBoard();
   return keep < 0;
+}
+
+/* ---------------- Manual phase editing (student/instructor curated) ----------
+   Beyond the brief-derived plan, the phase rail is directly editable: each
+   stage carries a "+" that authors a new custom phase (for artifacts the
+   catalog lacks — CRC cards, a Volere shell, a data dictionary), phases can be
+   dragged to reposition within their stage, and custom phases can be removed.
+   Every edit is serialized back into state.curriculum (the same {use|custom}
+   plan shape the brief planner produces), so it saves, restores, and — because
+   systemPrompt() lists the live PHASES array — the tutor's internal phase
+   structure updates automatically. Analysis always precedes Design. */
+
+// Serialize a live phase back to a plan item: catalog phases by id, custom
+// phases as a full definition. Round-trips cleanly through resolveCurriculumPlan.
+function phaseToPlanItem(p) {
+  if (!p.custom && PHASE_CATALOG.some(c => c.id === p.id)) return { use: p.id };
+  return { custom: { id: p.id, label: p.label, stage: p.stage, boardTitle: p.boardTitle, boardSub: p.boardSub, dialect: p.dialect, hints: p.hints, instructions: p.instructions } };
+}
+
+// Persist the current PHASES sequence into state.curriculum so it survives
+// save/restore. Keeps any existing title/sourceHash (so re-saving the same
+// brief won't trigger a re-plan that discards these manual edits).
+function persistActiveSequence() {
+  const prev = state.curriculum;
+  state.curriculum = {
+    title: (prev && prev.title) || (state.brief && state.brief.title) || "Custom phase sequence",
+    sourceHash: (prev && prev.sourceHash) || (state.brief ? briefSourceHash(state.brief) : "manual"),
+    phases: PHASES.map(phaseToPlanItem)
+  };
+}
+
+// A phase id that collides with neither a live phase nor a catalog id (a
+// custom phase reusing a catalog id would resolve to the catalog phase on reload).
+function uniquePhaseId(base) {
+  base = String(base || "phase").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 22) || "phase";
+  let id = base, n = 2;
+  while (PHASES.some(p => p.id === id) || PHASE_CATALOG.some(c => c.id === id)) { id = (base + n).slice(0, 24); n++; }
+  return id;
+}
+
+// Keep analysis phases ahead of design ones (the stable stage invariant that
+// resolveCurriculumPlan also enforces), then re-point phaseIndex at keepId.
+function reflowStages(keepId) {
+  PHASES = [...PHASES.filter(p => p.stage === "analysis"), ...PHASES.filter(p => p.stage === "design")];
+  const idx = PHASES.findIndex(p => p.id === keepId);
+  state.phaseIndex = idx >= 0 ? idx : Math.min(state.phaseIndex, PHASES.length - 1);
+}
+
+function insertCustomPhase(phase) {
+  const curId = PHASES[state.phaseIndex] ? PHASES[state.phaseIndex].id : phase.id;
+  let lastIdx = -1;
+  PHASES.forEach((p, i) => { if (p.stage === phase.stage) lastIdx = i; });
+  if (lastIdx < 0) { if (phase.stage === "analysis") PHASES.unshift(phase); else PHASES.push(phase); }
+  else PHASES.splice(lastIdx + 1, 0, phase);
+  reflowStages(curId);
+  persistActiveSequence(); markDirty();
+  renderRail(); renderHints(); renderBoard();
+}
+
+// Move the dragged phase before targetId, or (targetId null) to the end of
+// appendStage. Constrained to a single stage; the stage order is preserved.
+function movePhaseBefore(draggedId, targetId, appendStage) {
+  if (state.busy) return;
+  const curId = PHASES[state.phaseIndex].id;
+  const dragged = PHASES.find(p => p.id === draggedId);
+  if (!dragged) return;
+  const list = PHASES.filter(p => p.id !== draggedId);
+  let to;
+  if (targetId) { to = list.findIndex(p => p.id === targetId); if (to < 0) to = list.length; }
+  else { to = list.length; for (let k = list.length - 1; k >= 0; k--) { if (list[k].stage === appendStage) { to = k + 1; break; } } }
+  list.splice(to, 0, dragged);
+  PHASES = list;
+  reflowStages(curId);
+  persistActiveSequence(); markDirty();
+  renderRail(); renderHints(); renderBoard();
+}
+
+function deleteCustomPhase(id) {
+  const p = PHASES.find(x => x.id === id);
+  if (!p || !p.custom || state.busy) return;
+  if (PHASES.length <= 2) { addMsg("note", "Can't remove that phase — a session needs at least two phases."); return; }
+  if (!confirm(`Remove the "${p.label}" phase? Any diagram drawn in it will be discarded.`)) return;
+  const curId = PHASES[state.phaseIndex].id;
+  PHASES = PHASES.filter(x => x.id !== id);
+  delete state.diagrams[id];
+  state.completed.delete(id);
+  state.openedPhases.delete(id);
+  state.diagramHistory = state.diagramHistory.filter(h => h.phaseId !== id);
+  const idx = PHASES.findIndex(x => x.id === curId);
+  state.phaseIndex = idx >= 0 ? idx : Math.min(state.phaseIndex, PHASES.length - 1);
+  persistActiveSequence(); markDirty();
+  renderRail(); renderHints(); renderBoard();
+  addMsg("note", `Removed the "${p.label}" phase.`);
+}
+
+/* The one-shot AI call that authors a single custom phase from a plain-language
+   description. Mirrors the brief planner's custom-phase template and invariants,
+   but for one phase pinned to a chosen stage. The renderer guidance keeps the
+   result inside what Mermaid can actually draw (see CURRICULUM_DIALECTS). */
+function phaseAuthorSystem(stageId) {
+  const st = STAGES.find(s => s.id === stageId);
+  return `You are the phase author for OOAD Studio, a platform where an AI tutor guides an undergraduate through object-oriented analysis and design one phase at a time, each phase producing ONE modelling artifact on a shared drafting board.
+
+A student or instructor wants to add ONE new ${st.label} (${st.cw}) phase that produces a specific modelling artifact. Read their description and output ONLY a JSON object — no prose, no markdown fence.
+
+RENDERER — the drafting board renders with Mermaid, the only graphing library in this build. Choose the "dialect" from this list that best renders the requested artifact: ${CURRICULUM_DIALECTS.join(", ")}.
+- Relationship/flow artifacts → graph/flowchart.
+- Class-like or card artifacts (e.g. CRC cards) → classDiagram: one class per card, responsibilities as plain lines in the class body, collaborators as edges labelled "collaborates".
+- Requirement shells / templates (e.g. a Volere requirement) → requirementDiagram.
+- Entity/data artifacts (e.g. a data dictionary) → erDiagram.
+- Lifecycles → stateDiagram-v2; interactions → sequenceDiagram; hierarchies/breakdowns → mindmap.
+Always map the artifact onto the closest dialect above — never request another library. If the artifact is inherently tabular, still express it in the chosen dialect and describe that mapping in the DIAGRAM line.
+
+OUTPUT SHAPE:
+{ "custom": { "id": "<short lowercase id>", "label": "<pill label, 1-3 words>", "boardTitle": "<drafting-board heading>", "boardSub": "<one-line subtitle>", "dialect": "<one of the list above>", "hints": ["<short student hint chip>", "<2-3 total>"], "instructions": "<tutor phase instructions — template below>" } }
+Do NOT include "stage" — the platform fixes it to "${stageId}".
+
+The "instructions" MUST follow this template (plain text, roughly 150-250 words) and MUST preserve the Socratic invariant — the tutor ELICITS from the student and never invents actors, classes, or content the student has not stated:
+PHASE: <name> — <one-line purpose>.
+WHY THIS STEP (open with this, in your own words): <why this artifact exists and what question it answers>.
+<3-6 lines: what to elicit from the student and in what order. The student proposes; the tutor questions and refines. Include one "Introduce when relevant:" line naming a professional concern to raise contextually.>
+DIAGRAM: maintain a Mermaid "<dialect>" <precise drawing conventions for this artifact in that dialect; quote every label containing spaces or punctuation>.
+READY: <2-3 concrete, checkable criteria for signalling the phase is complete>.
+
+If the description is not a modelling artifact, or you cannot map it to any dialect, output exactly {"error": "<one short reason>"}.`;
+}
+
+let addPhaseStage = "analysis";
+function openAddPhase(stageId) {
+  if (state.busy) return;
+  addPhaseStage = stageId;
+  const st = STAGES.find(s => s.id === stageId);
+  $("addphase-sub").textContent = `A new ${st.label} (${st.cw}) phase. Describe the modelling artifact you want it to produce — the tutor will still elicit it Socratically, one question at a time, and draw it as the closest Mermaid representation the board can render.`;
+  $("addphase-desc").value = "";
+  setAddPhaseStatus("");
+  $("addphase-modal").classList.add("show");
+  setTimeout(() => $("addphase-desc").focus(), 30);
+}
+function setAddPhaseStatus(msg) {
+  const el = $("addphase-status");
+  el.textContent = msg || "";
+  el.style.display = msg ? "block" : "none";
+}
+$("addphase-cancel").onclick = () => $("addphase-modal").classList.remove("show");
+$("addphase-create").onclick = createPhaseFromDescription;
+$("addphase-desc").addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); createPhaseFromDescription(); }
+});
+
+async function createPhaseFromDescription() {
+  const desc = $("addphase-desc").value.trim();
+  if (desc.length < 3) { setAddPhaseStatus("Describe the artifact you want this phase to produce first."); return; }
+  if (PHASES.length >= CURRICULUM_MAX_PHASES) { setAddPhaseStatus(`This session already has the maximum of ${CURRICULUM_MAX_PHASES} phases — remove one first.`); return; }
+  if (state.busy) return;
+  if (!getKey()) { setAddPhaseStatus("Add an API key in Settings first — the studio uses it to author the phase."); return; }
+  setAddPhaseStatus("Designing the phase…");
+  const btn = $("addphase-create");
+  btn.disabled = true; state.busy = true; $("btn-send").disabled = true;
+  try {
+    const raw = await PROVIDERS[getProvider()].chat(getKey(), getModel(), phaseAuthorSystem(addPhaseStage), [{ role: "user", content: desc }]);
+    const obj = parseJsonLoose(raw);
+    if (!obj || obj.error || !obj.custom) throw new Error(obj && obj.error ? String(obj.error) : "the studio couldn't turn that into a phase");
+    obj.custom.stage = addPhaseStage;
+    const phase = normalizeCustomPhase(obj.custom);
+    if (!phase) throw new Error("the authored phase came back incomplete");
+    phase.stage = addPhaseStage;                 // normalize defaults to analysis; pin to the clicked stage
+    phase.id = uniquePhaseId(phase.id);
+    state.busy = false; $("btn-send").disabled = false;   // clear before re-render so pills are clickable
+    insertCustomPhase(phase);
+    $("addphase-modal").classList.remove("show");
+    addMsg("note", `Added a ${STAGES.find(s => s.id === phase.stage).label} phase: “${phase.label}” — drawn as a Mermaid ${phase.dialect}. Drag its pill to reposition it, and open it when you're ready to build that artifact.`);
+  } catch (e) {
+    setAddPhaseStatus("Couldn't add the phase — " + (e.message || e) + ". Try describing the artifact differently.");
+  } finally {
+    btn.disabled = false;
+    if (state.busy) { state.busy = false; $("btn-send").disabled = false; }
+  }
 }
 
 function curriculumPlannerSystem() {
