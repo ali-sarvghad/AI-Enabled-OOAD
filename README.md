@@ -51,6 +51,17 @@ Work is **autosaved in the browser** automatically — a few seconds after each 
 
 ### Working with the drafting board
 
+- **Flip between phases' diagrams without switching phase.** Once more than one
+  phase has an artifact, a **tab strip** appears above the board with a tab per
+  phase. Click one to view that phase's diagram or table on the board while the
+  **tutor stays put** in the phase you're actually working in — handy for
+  glancing back at the use-case diagram while modelling classes. The active
+  phase's tab is marked with a dot, and the sub-header reminds you when you're
+  viewing a different phase ("· viewing — the tutor is working in …"). Editing the
+  **Source**, zooming, **"What is this?"**, and image export all act on whichever
+  diagram you're viewing; the board snaps back to the active phase automatically
+  when the tutor draws. (Switching the *active* phase is still done from the phase
+  rail at the top.)
 - **Collapse either panel.** Use the **⟨ / ⟩** buttons in each panel's header to collapse the conversation or the drafting board down to a thin rail so the other fills the width; click the rail to bring it back. Handy for reading a large diagram or focusing on the dialogue.
 - **Edit the diagram source.** The **Source** tab is editable — tweak the Mermaid by hand to fine-tune a diagram, then **Apply changes** (or Ctrl/Cmd+Enter). The edit is validated first, so broken syntax never replaces a working diagram; a valid edit is saved as a new revision (marked as a student edit) and the board re-renders. **Revert** restores the current diagram.
 - **Zoom and pan the diagram.** In the Diagram view, use the **＋ / − / ⟳** controls (bottom-right), the mouse wheel to zoom, and drag to pan. Zoom persists as the tutor revises the diagram within a phase and resets when you move to a new phase.

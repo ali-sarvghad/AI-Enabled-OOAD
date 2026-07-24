@@ -310,6 +310,23 @@
     cursor: pointer; color: var(--ink-soft); font-family: var(--sans);
   }
   .view-toggle button.on { background: var(--blueprint); color: var(--btn-fg); }
+  /* Phase-tab strip: flip the board between phases' artifacts without switching phase. */
+  .board-phase-tabs {
+    display: none; align-items: center; gap: 6px; flex-shrink: 0;
+    padding: 7px 18px; border-bottom: 1px solid var(--line);
+    background: var(--panel); overflow-x: auto;
+  }
+  .board-tab {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 11px; font-size: 11.5px; font-family: var(--sans);
+    color: var(--ink-soft); background: var(--paper); cursor: pointer;
+    white-space: nowrap; transition: all 0.12s;
+  }
+  .board-tab:hover { border-color: var(--blueprint); color: var(--blueprint-deep); }
+  .board-tab.sel { background: var(--blueprint); border-color: var(--blueprint); color: var(--btn-fg); font-weight: 600; }
+  .board-tab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ready); flex-shrink: 0; }
+  .board-tab.sel .dot { background: var(--btn-fg); }
   .board-body {
     flex: 1; overflow: auto; position: relative;
     background:
@@ -665,6 +682,7 @@
       </div>
       <button class="icon-btn" id="board-collapse" title="Collapse drafting board" aria-label="Collapse drafting board" style="margin-left:2px">⟩</button>
     </div>
+    <div class="board-phase-tabs" id="board-phase-tabs" role="tablist" aria-label="Switch which phase's artifact is shown"></div>
     <div class="brief-toolbar" id="brief-toolbar">
       <input type="search" id="brief-search" placeholder="Search the brief…" autocomplete="off">
       <span class="brief-count" id="brief-count"></span>
@@ -1551,12 +1569,60 @@ $("file-input").onchange = async (e) => {
 /* ---------------- Board rendering ---------------- */
 
 let renderSeq = 0;
+
+/* The board can display ANY phase's artifact without moving the tutor. The
+   ACTIVE phase (state.phaseIndex) is where the tutor works and writes; the
+   VIEWED phase (viewPhaseIndex) is whichever artifact the board shows. They
+   match by default and re-sync whenever the active phase changes or the tutor
+   draws — a phase-tab strip lets you flip between them in between. */
+let viewPhaseIndex = 0;
+function boardPhaseIdx() {
+  return (viewPhaseIndex >= 0 && viewPhaseIndex < PHASES.length) ? viewPhaseIndex : state.phaseIndex;
+}
+function boardPhase() { return PHASES[boardPhaseIdx()]; }
+
+function updateBoardHeading() {
+  if (boardView === "brief") return;   // brief view owns the heading
+  const p = boardPhase();
+  $("board-title").textContent = p.boardTitle;
+  $("board-sub").textContent = p.boardSub
+    + (boardPhaseIdx() !== state.phaseIndex ? " · viewing — the tutor is working in " + PHASES[state.phaseIndex].label : "");
+}
+
+// The phase-tab strip: one tab per phase that has an artifact (plus the active
+// phase). Clicking a tab points the board at that phase WITHOUT switching phase.
+function renderBoardTabs() {
+  const host = $("board-phase-tabs");
+  if (!host) return;
+  const shown = PHASES.map((p, i) => i).filter(i =>
+    ((state.diagrams[PHASES[i].id] || "").trim()) || i === state.phaseIndex);
+  if (boardView === "brief" || shown.length < 2) { host.style.display = "none"; host.innerHTML = ""; return; }
+  host.style.display = "flex";
+  host.innerHTML = "";
+  shown.forEach(i => {
+    const p = PHASES[i];
+    const b = document.createElement("button");
+    b.className = "board-tab" + (i === boardPhaseIdx() ? " sel" : "") + (i === state.phaseIndex ? " active" : "");
+    b.title = i === state.phaseIndex ? "Active phase — the tutor is working here" : "View this phase's artifact (the tutor stays put)";
+    b.innerHTML = (i === state.phaseIndex ? '<span class="dot" aria-hidden="true"></span>' : "") + escapeHtml(p.label);
+    b.onclick = () => viewBoardPhase(i);
+    host.appendChild(b);
+  });
+}
+
+function viewBoardPhase(i) {
+  if (i < 0 || i >= PHASES.length) return;
+  viewPhaseIndex = i;
+  resetZoom();
+  if (boardView === "brief") setView("diagram");
+  renderBoard();
+  if (boardView === "source") $("source-edit").value = state.diagrams[boardPhase().id] || "";
+}
+
 async function renderBoard() {
-  const phase = PHASES[state.phaseIndex];
-  if (boardView !== "brief") {          // brief view owns the board head while active
-    $("board-title").textContent = phase.boardTitle;
-    $("board-sub").textContent = phase.boardSub;
-  }
+  renderBoardTabs();
+  const phase = boardPhase();
+  updateBoardHeading();
   const src = state.diagrams[phase.id];
   const zoomLayer = $("diagram-zoom");
   const errSlot = $("render-error-slot");
@@ -1603,7 +1669,7 @@ function setView(mode) {
   $("diagram-host").style.display = mode === "diagram" ? "flex" : "none";
   $("source-view").style.display = mode === "source" ? "flex" : "none";
   $("brief-reader").style.display = mode === "brief" ? "block" : "none";
-  if (mode === "source") { $("source-edit").value = state.diagrams[PHASES[state.phaseIndex].id] || ""; setSourceStatus("", false); }
+  if (mode === "source") { $("source-edit").value = state.diagrams[boardPhase().id] || ""; setSourceStatus("", false); }
   $("brief-toolbar").style.display = mode === "brief" ? "flex" : "none";
   if (mode === "brief") {
     $("board-title").textContent = state.brief ? (state.brief.title || "Assignment brief") : "Assignment brief";
@@ -1611,10 +1677,9 @@ function setView(mode) {
     $("brief-search").value = state.briefSearch || "";
     renderBriefReader();
   } else {
-    const ph = PHASES[state.phaseIndex];
-    $("board-title").textContent = ph.boardTitle;
-    $("board-sub").textContent = ph.boardSub;
+    updateBoardHeading();
   }
+  renderBoardTabs();
   updateZoomUI();
 }
 
@@ -1631,7 +1696,7 @@ function setSourceStatus(msg, isError) {
 }
 
 async function applySourceEdit() {
-  const phase = PHASES[state.phaseIndex];
+  const phase = boardPhase();   // edits apply to whichever phase's artifact is on the board
   const src = $("source-edit").value.trim();
   if (!src) { setSourceStatus("Nothing to apply — the source is empty.", true); return; }
   if (src === (state.diagrams[phase.id] || "")) { setSourceStatus("No changes to apply.", false); return; }
@@ -1657,7 +1722,7 @@ async function applySourceEdit() {
 
 $("source-apply").onclick = applySourceEdit;
 $("source-revert").onclick = () => {
-  $("source-edit").value = state.diagrams[PHASES[state.phaseIndex].id] || "";
+  $("source-edit").value = state.diagrams[boardPhase().id] || "";
   setSourceStatus("Reverted to the current diagram.", false);
 };
 // Ctrl/Cmd+Enter applies from within the editor.
@@ -2013,6 +2078,7 @@ function processReply(raw) {
       const phaseId = phase.id;
       state.diagrams[phaseId] = src;
       state.diagramHistory.push({ phaseId, source: src, ts: new Date().toISOString() });
+      viewPhaseIndex = state.phaseIndex;   // show the freshly drawn artifact even if browsing another phase
       diagramUpdated = true;
     }
     text = text.replace(fence, "").trim();
@@ -2104,6 +2170,7 @@ $("btn-advance").onclick = () => {
 
 function switchPhase(index, isRevisit) {
   state.phaseIndex = index;
+  viewPhaseIndex = index;          // board follows the active phase on a real switch
   resetZoom();
   renderRail(); renderHints(); renderBoard(); setView(false);
   markDirty();
@@ -2294,6 +2361,7 @@ function installCurriculum(plan) {
 function refreshAfterCurriculumChange(previousPhaseId) {
   const keep = PHASES.findIndex(p => p.id === previousPhaseId);
   state.phaseIndex = keep >= 0 ? keep : 0;
+  viewPhaseIndex = state.phaseIndex;
   state.completed = new Set([...state.completed].filter(id => PHASES.some(p => p.id === id)));
   $("advance-banner").classList.remove("show");
   renderRail(); renderHints(); renderBoard();
@@ -2344,6 +2412,7 @@ function reflowStages(keepId) {
   PHASES = [...PHASES.filter(p => p.stage === "analysis"), ...PHASES.filter(p => p.stage === "design")];
   const idx = PHASES.findIndex(p => p.id === keepId);
   state.phaseIndex = idx >= 0 ? idx : Math.min(state.phaseIndex, PHASES.length - 1);
+  viewPhaseIndex = state.phaseIndex;
 }
 
 function insertCustomPhase(phase) {
@@ -2388,6 +2457,7 @@ function deleteCustomPhase(id) {
   state.diagramHistory = state.diagramHistory.filter(h => h.phaseId !== id);
   const idx = PHASES.findIndex(x => x.id === curId);
   state.phaseIndex = idx >= 0 ? idx : Math.min(state.phaseIndex, PHASES.length - 1);
+  viewPhaseIndex = state.phaseIndex;
   persistActiveSequence(); markDirty();
   renderRail(); renderHints(); renderBoard();
   addMsg("note", `Removed the "${p.label}" phase.`);
@@ -2705,12 +2775,12 @@ document.addEventListener("keydown", (e) => {
    background for pasting into documents and slides. */
 
 function diagramExportName(ext) {
-  const label = (state.brief && state.brief.title ? state.brief.title + "-" : "") + PHASES[state.phaseIndex].id;
+  const label = (state.brief && state.brief.title ? state.brief.title + "-" : "") + boardPhase().id;
   return "ooad-" + label.replace(/[^a-z0-9]+/gi, "-").toLowerCase() + "." + ext;
 }
 
 async function exportDiagramImage(format) {
-  const phase = PHASES[state.phaseIndex];
+  const phase = boardPhase();
   const src = state.diagrams[phase.id];
   if (!src) {
     addMsg("note", "No diagram to export yet — the drafting board for this phase is empty.");
@@ -3118,7 +3188,7 @@ function applyZoom() {
 }
 function resetZoom() { zoom = { s: 1, x: 0, y: 0 }; applyZoom(); }
 function zoomStep(factor) { zoom.s = clampZoom(zoom.s * factor); applyZoom(); }
-function diagramPresent() { return !!state.diagrams[PHASES[state.phaseIndex].id]; }
+function diagramPresent() { return !!state.diagrams[boardPhase().id]; }
 function updateZoomUI() {
   const active = boardView === "diagram" && diagramPresent();
   $("zoom-controls").classList.toggle("show", active);
@@ -3170,7 +3240,7 @@ let inspectHovered = null;
 
 function setInspectMode(on) {
   // Inspect resolves SVG diagram elements; a Markdown-artifact board has none.
-  if (on && (boardView !== "diagram" || !diagramPresent() || PHASES[state.phaseIndex].renderer === "markdown")) return;
+  if (on && (boardView !== "diagram" || !diagramPresent() || boardPhase().renderer === "markdown")) return;
   inspectMode = on;
   $("inspect-toggle").classList.toggle("on", on);
   $("inspect-toggle").setAttribute("aria-pressed", on ? "true" : "false");
@@ -3239,13 +3309,17 @@ function describeInspectTarget(t) {
     const t = svg ? resolveInspectTarget(e.target, svg) : null;
     if (!t || state.busy) return;
     e.stopPropagation();
-    const phase = PHASES[state.phaseIndex];
+    const phase = boardPhase();
     const desc = describeInspectTarget(t);
     const shown = (t.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    // When inspecting a phase other than the active one, the tutor's context
+    // holds the active phase's source — so hand it the viewed artifact inline.
+    const viewingOther = boardPhaseIdx() !== state.phaseIndex;
+    const srcNote = viewingOther ? `\n\nThis element is from the "${phase.boardTitle}" artifact (an earlier phase, not the current working phase); its source is:\n${state.diagrams[phase.id] || "(none)"}` : "";
     state.metrics.inspectClicks++;
     setInspectMode(false);
     addMsg("note", "What is this? — " + (shown ? "“" + shown + "”" : "the selected diagram element"));
-    send(`(The student is in "What is this?" mode and clicked an element of the current ${phase.boardTitle} (${phase.dialect}) diagram: ${desc}. Treat this as a UML knowledge question and answer it directly: first explain in a sentence or two what kind of UML element or notation this is — the underlying concept; then, if applicable, what it specifically captures in THIS project's diagram, using the names in the current diagram source. Keep it brief, include Sources and Further reading as your knowledge-answer rules require, do not change the diagram, do not output a mermaid block, and do not signal readiness.)`, true);
+    send(`(The student is in "What is this?" mode and clicked an element of the ${phase.boardTitle} (${phase.dialect}) artifact: ${desc}. Treat this as a UML knowledge question and answer it directly: first explain in a sentence or two what kind of UML element or notation this is — the underlying concept; then, if applicable, what it specifically captures in THIS project, using the names in that artifact's source.${srcNote} Keep it brief, include Sources and Further reading as your knowledge-answer rules require, do not change any diagram, do not output a mermaid or markdown block, and do not signal readiness.)`, true);
   });
 })();
 
@@ -3404,6 +3478,7 @@ function importSession(data) {
     metrics: reviveMetrics(data.metrics)
   };
 
+  viewPhaseIndex = idx;
   $("advance-banner").classList.remove("show");
   resetZoom();
   renderRail(); renderHints(); renderBoard(); setView(false); renderBriefBanner(); refreshSettingsButton();
@@ -3438,6 +3513,7 @@ function replayConversation() {
 }
 
 function boot(isReset) {
+  viewPhaseIndex = state.phaseIndex;
   renderRail(); renderHints(); renderBoard(); setView(false); renderBriefBanner(); refreshSettingsButton();
   addMsg("assistant",
     "Welcome to the studio. We'll design a software system together in two stages — first Analysis (what the system must do), then Design (how it's built) — the way the module's coursework is structured. But we start where every project starts: not with screens or code, but with people.\n\nTell me about the system you have in mind: in a sentence or two, what should it do, and for whom? (You can also ask me anything about UML at any point — that's what I'm here for.)");
