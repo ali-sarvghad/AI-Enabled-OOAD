@@ -1,5 +1,10 @@
 # OOAD Studio — Research Prototype
 
+> **Testing the platform?** Start with the **[Tester's Guide](./TESTER-GUIDE.md)** —
+> it explains what the tool does, the framework the AI tutor works within (what it
+> does and doesn't do), and how to use it, step by step. This README covers
+> deployment, security, and cost.
+
 An experimental, AI-guided learning environment for object-oriented analysis and design (UML). A Socratic tutor walks a student through the OOAD lifecycle in two stages, mirroring the module's coursework (CW1 Analysis, CW2 Design), co-constructing diagrams-as-code (Mermaid) on a live drafting board, one question at a time. The standard sequence:
 
 - **Analysis (CW1):** Actors & Goals → Use Cases → Activity → Analysis Class (domain model) → Sequence (use-case realization) → State Machine.
